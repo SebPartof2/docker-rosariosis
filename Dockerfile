@@ -14,7 +14,7 @@ ENV DBTYPE=postgresql \
     PGPASSWORD=rosariopwd \
     PGDATABASE=rosariosis \
     PGPORT=5432 \
-    ROSARIOSIS_YEAR=2025 \
+    ROSARIOSIS_YEAR=2026 \
     ROSARIOSIS_LANG='en_US'
 
 # Install postgresql-client, sendmail, nano editor, locales
@@ -89,7 +89,7 @@ RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
 RUN a2enmod rewrite
 
 # Download and extract rosariosis
-ENV ROSARIOSIS_VERSION 'v12.8.1'
+ENV ROSARIOSIS_VERSION 'v12.9'
 
 # Set the SHELL option -o pipefail before RUN with a pipe in it
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
