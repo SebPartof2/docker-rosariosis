@@ -1,7 +1,7 @@
 # https://docs.docker.com/compose/reference/
 # sudo docker compose --file docker-compose.yml up -d
 # Update to the latest image:
-# sudo docker compose pull && sudo docker compose up -d
+# sudo docker compose pull && sudo docker compose build --no-cache web && sudo docker compose up -d
 version: '3.1'
 
 services:
@@ -17,8 +17,12 @@ services:
       POSTGRES_DB: rosariosis
 
   web:
-    image: rosariosis/rosariosis:master
-    #build: .
+    # Builds rosariosis/rosariosis:master + the gd and zip PHP extensions.
+    # See Dockerfile.ext.
+    build:
+      context: .
+      dockerfile: Dockerfile.ext
+    #image: rosariosis/rosariosis:master
     ports:
       # host:container
       - "8001:80"
