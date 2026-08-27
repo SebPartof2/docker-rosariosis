@@ -1,0 +1,43 @@
+# Thin wrapper over the published RosarioSIS image.
+# Adds the PHP extensions RosarioSIS warns about (gd, zip) without
+# rebuilding the whole upstream image from source.
+#
+# Build:  docker compose build --no-cache web
+# Run:    docker compose up -d
+
+FROM rosariosis/rosariosis:master
+
+# gd  -> image resize/compression
+# zip -> add-on uploads
+RUN set -eux; \
+    savedAptMark="$(apt-mark showmanual)"; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libpng-dev \
+        libjpeg-dev \
+        libwebp-dev \
+        libfreetype6-dev \
+        libzip-dev; \
+    \
+    docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype; \
+    docker-php-ext-install -j"$(nproc)" gd zip; \
+    \
+    # Reset apt-mark so purge --auto-remove drops the build deps but keeps
+    # the shared libraries the new .so files actually link against.
+    extDir="$(php -r 'echo ini_get("extension_dir");')"; \
+    apt-mark auto '.*' > /dev/null; \
+    apt-mark manual $savedAptMark > /dev/null; \
+    apt-mark auto autoconf dpkg-dev g++ gcc libc6-dev make > /dev/null; \
+    ldd "$extDir"/*.so \
+        | awk '/=>/ { print $3 }' \
+        | sort -u \
+        | xargs -r dpkg-query -S 2>/dev/null \
+        | cut -d: -f1 \
+        | sort -u \
+        | xargs -r apt-mark manual > /dev/null; \
+    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
+    rm -rf /var/lib/apt/lists/*; \
+    \
+    # Fail the build loudly if either extension didn't land.
+    php -m | grep -qx gd; \
+    php -m | grep -qx zip
