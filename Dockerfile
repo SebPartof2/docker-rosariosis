@@ -116,6 +116,30 @@ RUN mkdir /usr/src/rosariosis && \
     curl -L https://gitlab.com/francoisjacquet/rosariosis/-/archive/${ROSARIOSIS_VERSION}/rosariosis-${ROSARIOSIS_VERSION}.tar.gz \
     | tar xz --strip-components=1 -C /usr/src/rosariosis
 
+# --- Bundled add-ons -------------------------------------------------------
+# Baked into /usr/src/rosariosis so /init re-applies them to /var/www/html on
+# every container start. They therefore survive redeploys and cannot be lost
+# by an accidental delete in the volume.
+#
+# Neither add-on publishes tags, so these pin a branch. Replace with commit
+# SHAs once you have ones you trust:
+#   docker build --build-arg REST_API_REF=<sha> --build-arg STUDENTS_IMPORT_REF=<sha> .
+ARG REST_API_REF=master
+ARG STUDENTS_IMPORT_REF=master
+
+# REST_API is a *plugin* -> plugins/
+RUN mkdir -p /usr/src/rosariosis/plugins/REST_API && \
+    curl -fL "https://gitlab.com/francoisjacquet/REST_API/-/archive/${REST_API_REF}/REST_API-${REST_API_REF}.tar.gz" \
+    | tar xz --strip-components=1 -C /usr/src/rosariosis/plugins/REST_API && \
+    test -f /usr/src/rosariosis/plugins/REST_API/Menu.php
+
+# Students_Import is a *module* -> modules/
+RUN mkdir -p /usr/src/rosariosis/modules/Students_Import && \
+    curl -fL "https://gitlab.com/francoisjacquet/Students_Import/-/archive/${STUDENTS_IMPORT_REF}/Students_Import-${STUDENTS_IMPORT_REF}.tar.gz" \
+    | tar xz --strip-components=1 -C /usr/src/rosariosis/modules/Students_Import && \
+    test -f /usr/src/rosariosis/modules/Students_Import/Menu.php
+# ---------------------------------------------------------------------------
+
 # Copy our configuration files.
 COPY conf/config.inc.php /usr/src/rosariosis/config.inc.php
 COPY bin/init /init
