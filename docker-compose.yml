@@ -1,7 +1,5 @@
 # https://docs.docker.com/compose/reference/
 # sudo docker compose --file docker-compose.yml up -d
-# Update to the latest image:
-# sudo docker compose pull && sudo docker compose build --no-cache web && sudo docker compose up -d
 version: '3.1'
 
 services:
@@ -9,19 +7,17 @@ services:
   db:
     image: postgres:15
     volumes:
-      # Will persist container's /var/lib/postgresql/data folder to host's ./plan/db/ folder
-      - "./plan/db:/var/lib/postgresql/data"
+      # ../files/ survives Dokploy redeploys; ./ (inside code/) does NOT.
+      - "../files/plan/db:/var/lib/postgresql/data"
     environment:
       POSTGRES_USER: rosario
       POSTGRES_PASSWORD: rosariopwd
       POSTGRES_DB: rosariosis
 
   web:
-    # Builds rosariosis/rosariosis:master + the gd and zip PHP extensions.
-    # See Dockerfile.ext.
-    build:
-      context: .
-      dockerfile: Dockerfile.ext
+    # Build from the local Dockerfile so the gd and zip extension
+    # installs actually run. Requires Compose Type = "Docker Compose".
+    build: .
     #image: rosariosis/rosariosis:master
     ports:
       # host:container
@@ -37,8 +33,7 @@ services:
     depends_on:
       - db
     volumes:
-      # Will persist container's /var/www/html folder to host's ./plan/rosariosis/ folder
-      - "./plan/rosariosis:/var/www/html"
+      - "../files/plan/rosariosis:/var/www/html"
     environment:
       PGHOST: db
       PGUSER: rosario
