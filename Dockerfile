@@ -128,16 +128,20 @@ ARG REST_API_REF=master
 ARG STUDENTS_IMPORT_REF=master
 
 # REST_API is a *plugin* -> plugins/
-RUN mkdir -p /usr/src/rosariosis/plugins/REST_API && \
-    curl -fL "https://gitlab.com/francoisjacquet/REST_API/-/archive/${REST_API_REF}/REST_API-${REST_API_REF}.tar.gz" \
-    | tar xz --strip-components=1 -C /usr/src/rosariosis/plugins/REST_API && \
-    test -f /usr/src/rosariosis/plugins/REST_API/Menu.php
+RUN dest=/usr/src/rosariosis/plugins/REST_API; \
+    mkdir -p "$dest"; \
+    curl -fsSL "https://gitlab.com/francoisjacquet/REST_API/-/archive/${REST_API_REF}/REST_API-${REST_API_REF}.tar.gz" \
+    | tar xz --strip-components=1 -C "$dest"; \
+    echo "--- REST_API contents ---"; ls -la "$dest"; \
+    test -n "$(ls -A "$dest")" || { echo "ERROR: REST_API extracted empty" >&2; exit 1; }
 
 # Students_Import is a *module* -> modules/
-RUN mkdir -p /usr/src/rosariosis/modules/Students_Import && \
-    curl -fL "https://gitlab.com/francoisjacquet/Students_Import/-/archive/${STUDENTS_IMPORT_REF}/Students_Import-${STUDENTS_IMPORT_REF}.tar.gz" \
-    | tar xz --strip-components=1 -C /usr/src/rosariosis/modules/Students_Import && \
-    test -f /usr/src/rosariosis/modules/Students_Import/Menu.php
+RUN dest=/usr/src/rosariosis/modules/Students_Import; \
+    mkdir -p "$dest"; \
+    curl -fsSL "https://gitlab.com/francoisjacquet/Students_Import/-/archive/${STUDENTS_IMPORT_REF}/Students_Import-${STUDENTS_IMPORT_REF}.tar.gz" \
+    | tar xz --strip-components=1 -C "$dest"; \
+    echo "--- Students_Import contents ---"; ls -la "$dest"; \
+    test -n "$(ls -A "$dest")" || { echo "ERROR: Students_Import extracted empty" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 
 # Copy our configuration files.
