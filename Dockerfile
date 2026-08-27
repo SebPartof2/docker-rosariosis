@@ -49,15 +49,33 @@ RUN savedAptMark="$(apt-mark showmanual)"; \
     apt-mark manual $savedAptMark; \
     # Remove compilers & dev libraries
     apt-mark auto autoconf dpkg-dev g++ gcc libc6-dev make; \
+    # `readlink -f` is required on bookworm: ldd reports /lib/<triplet>/... but
+    # dpkg records /usr/lib/<triplet>/... after usrmerge, so dpkg-query -S finds
+    # nothing, marks nothing manual, and --auto-remove strips libwebp7/libzip4.
     ldd "$extDir"/*.so \
         | awk '/=>/ { print $3 }' \
         | sort -u \
-        | xargs -r dpkg-query -S \
+        | xargs -r readlink -f \
+        | sort -u \
+        | xargs -r dpkg-query -S 2>/dev/null \
         | cut -d: -f1 \
         | sort -u \
         | xargs -rt apt-mark manual; \
     apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
     rm -rf /var/lib/apt/lists/*;
+
+# Belt and braces: restore any runtime library the purge above still managed to
+# strip, then fail the build loudly if an extension does not actually load.
+RUN apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libwebp7 libzip4 libjpeg62-turbo libpng16-16 libfreetype6 libicu72 libpq5; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ldd "$(php -r 'echo ini_get("extension_dir");')"/*.so | grep 'not found'; then \
+        echo "ERROR: unresolved shared library above" >&2; exit 1; \
+    fi; \
+    for ext in gd zip pgsql pdo_pgsql gettext intl ldap; do \
+        php -m | grep -qx "$ext" || { echo "ERROR: $ext failed to load" >&2; exit 1; }; \
+    done
 
 # Set recommended PHP.ini settings
 RUN { \
