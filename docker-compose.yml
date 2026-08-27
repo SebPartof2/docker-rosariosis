@@ -21,7 +21,7 @@ services:
     #build: .
     ports:
       # host:container
-      - "80:80"
+      - "8001:80"
     # Warning: if you use a different port (ie. 8080) for host & access from http://localhost:8080
     # wkhtmltopdf will fail with network error: ConnectionRefusedError
     # To fix that, you can use this hack
