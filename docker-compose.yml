@@ -1,6 +1,5 @@
 # https://docs.docker.com/compose/reference/
 # sudo docker compose --file docker-compose.yml up -d
-version: '3.1'
 
 services:
 
@@ -40,4 +39,7 @@ services:
       PGPASSWORD: rosariopwd
       PGDATABASE: rosariosis
       ROSARIOSIS_YEAR: 2026
+      # Set the value in Dokploy's Environment tab, not here.
+      # Generate with: openssl rand -hex 32
+      ROSARIO_REST_API_SECRET: ${ROSARIO_REST_API_SECRET}
 #      ROSARIOSIS_LANG: 'es_ES'
