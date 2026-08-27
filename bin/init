@@ -13,6 +13,24 @@ if [[ -e "/var/www/html/config.inc.php.tmp" ]]; then
     mv /var/www/html/config.inc.php.tmp /var/www/html/config.inc.php
 fi
 
+# REST_API plugin secret.
+# The config.inc.php above is preserved across restarts, so the define cannot
+# live in conf/config.inc.php -- it would only ever apply to a fresh volume.
+# Append it here instead, idempotently.
+if [[ -n "$ROSARIO_REST_API_SECRET" ]]; then
+    if grep -q "ROSARIO_REST_API_SECRET" /var/www/html/config.inc.php; then
+        echo "REST_API secret already present in config.inc.php"
+    else
+        echo "Adding REST_API secret to config.inc.php"
+        # Strip a trailing ?> if present, then append.
+        sed -i -e 's/^[[:space:]]*?>[[:space:]]*$//' /var/www/html/config.inc.php
+        printf "\ndefine( 'ROSARIO_REST_API_SECRET', '%s' );\n" \
+            "$ROSARIO_REST_API_SECRET" >> /var/www/html/config.inc.php
+    fi
+else
+    echo "ROSARIO_REST_API_SECRET not set, skipping REST_API config"
+fi
+
 chown -R www-data:www-data /var/www/html
 
 echo "Configuring locale"
