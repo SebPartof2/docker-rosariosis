@@ -98,6 +98,15 @@ $RosarioLocales = array( getenv( 'ROSARIOSIS_LANG' ).'.utf8' );
 
 
 /**
+ * Time zone: the in-world location
+ * Sets the PHP and the PostgreSQL session time zones
+ *
+ * @link https://www.php.net/manual/en/timezones.php
+ */
+$Timezone = getenv( 'ROSARIOSIS_TIMEZONE' ) ? getenv( 'ROSARIOSIS_TIMEZONE' ) : 'America/Anchorage';
+
+
+/**
  * Recommended PHP configuration settings:
  * Uncomment and edit values as needed
  *

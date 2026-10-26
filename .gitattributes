@@ -1,0 +1,4 @@
+# Patches and shell scripts run inside the Linux image: keep them LF.
+*.patch text eol=lf
+bin/init text eol=lf
+*.sh text eol=lf

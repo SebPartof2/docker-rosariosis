@@ -15,12 +15,13 @@ ENV DBTYPE=postgresql \
     PGDATABASE=rosariosis \
     PGPORT=5432 \
     ROSARIOSIS_YEAR=2026 \
-    ROSARIOSIS_LANG='en_US'
+    ROSARIOSIS_LANG='en_US' \
+    ROSARIOSIS_TIMEZONE='America/Anchorage'
 
-# Install postgresql-client, sendmail, nano editor, locales
+# Install postgresql-client, sendmail, nano editor, locales, patch (core patches below)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        postgresql-client sendmail nano locales;
+        postgresql-client sendmail nano locales patch;
 
 # Download and install wkhtmltopdf (avoid direct installation via apt, saves 115M :)
 RUN curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb \
@@ -85,6 +86,9 @@ RUN { \
     echo 'session.gc_maxlifetime = 3600'; \
     echo 'upload_max_filesize = 50M'; \
     echo 'post_max_size = 51M'; \
+    # In-world location. RosarioSIS' $Timezone (config.inc.php) also sets it,
+    # and the PostgreSQL session time zone; this covers scripts that run before.
+    echo "date.timezone = ${ROSARIOSIS_TIMEZONE}"; \
 } > /usr/local/etc/php/conf.d/rosariosis-recommended.ini
 # Set recommended PHP error logging
 RUN { \
@@ -115,6 +119,22 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN mkdir /usr/src/rosariosis && \
     curl -L https://gitlab.com/francoisjacquet/rosariosis/-/archive/${ROSARIOSIS_VERSION}/rosariosis-${ROSARIOSIS_VERSION}.tar.gz \
     | tar xz --strip-components=1 -C /usr/src/rosariosis
+
+# --- Core patches ----------------------------------------------------------
+# Edits to RosarioSIS core files, kept as patches so they can be re-applied
+# after an upgrade. Every edit is marked with a SIMDATE comment.
+# --fuzz=0: fail the build rather than apply a patch to code that moved.
+# After bumping ROSARIOSIS_VERSION, see docs/sim-date.md "Upgrading".
+COPY patches/rosariosis/ /tmp/patches/
+RUN for p in /tmp/patches/*.patch; do \
+        echo "Applying $p"; \
+        patch -p1 -d /usr/src/rosariosis --forward --batch --fuzz=0 < "$p" \
+            || { echo "ERROR: $p does not apply to RosarioSIS ${ROSARIOSIS_VERSION}" >&2; exit 1; }; \
+    done; \
+    rm -rf /tmp/patches; \
+    grep -q 'function SimDate' /usr/src/rosariosis/functions/Date.php \
+        || { echo "ERROR: Sim Date core patch missing" >&2; exit 1; }
+# ---------------------------------------------------------------------------
 
 # --- Bundled add-ons -------------------------------------------------------
 # Baked into /usr/src/rosariosis so /init re-applies them to /var/www/html on

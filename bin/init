@@ -31,6 +31,17 @@ else
     echo "ROSARIO_REST_API_SECRET not set, skipping REST_API config"
 fi
 
+# Time zone (in-world location), for config.inc.php files that predate it.
+# Same reason as above: config.inc.php is preserved across restarts.
+if grep -q '\$Timezone' /var/www/html/config.inc.php; then
+    echo "Time zone already present in config.inc.php"
+else
+    echo "Adding time zone to config.inc.php"
+    sed -i -e 's/^[[:space:]]*?>[[:space:]]*$//' /var/www/html/config.inc.php
+    printf "\n\$Timezone = getenv( 'ROSARIOSIS_TIMEZONE' ) ? getenv( 'ROSARIOSIS_TIMEZONE' ) : 'America/Anchorage';\n" \
+        >> /var/www/html/config.inc.php
+fi
+
 chown -R www-data:www-data /var/www/html
 
 echo "Configuring locale"

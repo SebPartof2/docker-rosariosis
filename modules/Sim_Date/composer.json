@@ -1,0 +1,16 @@
+{
+	"name": "sim-date",
+	"description": "Hidden admin page to set the school's in-world \"today\" (sim date). Requires the RosarioSIS core patch in patches/rosariosis/",
+	"type": "rosariosis-module",
+	"keywords": ["rosariosis", "school", "date", "calendar", "roleplay"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=5.5.9"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": "12.9.3"
+		}
+	}
+}

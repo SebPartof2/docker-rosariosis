@@ -1,0 +1,1642 @@
+diff --git a/ProgramFunctions/SendNotification.fnc.php b/ProgramFunctions/SendNotification.fnc.php
+index 97eee5c..17c2c30 100644
+--- a/ProgramFunctions/SendNotification.fnc.php
++++ b/ProgramFunctions/SendNotification.fnc.php
+@@ -41,13 +41,14 @@ function SendNotificationCreateStudentAccount( $student_id, $to = '' )
+ 	$message = _( 'New student account was created for %s (%d) (inactive).' );
+ 
+ 	// Student was Inactive and is enrolled as of today, in Default School Year: Account Activation.
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$student_account_activated = DBGetOne( "SELECT 1
+ 		FROM student_enrollment
+ 		WHERE STUDENT_ID='" . (int) $student_id . "'
+ 		AND SYEAR='" . Config( 'SYEAR' ) . "'
+ 		AND START_DATE IS NOT NULL
+-		AND CURRENT_DATE>=START_DATE
+-		AND (CURRENT_DATE<=END_DATE OR END_DATE IS NULL)" );
++		AND '" . DBDate() . "'>=START_DATE
++		AND ('" . DBDate() . "'<=END_DATE OR END_DATE IS NULL)" );
+ 
+ 	if ( $student_account_activated )
+ 	{
+diff --git a/ProgramFunctions/StudentsUsersInfo.fnc.php b/ProgramFunctions/StudentsUsersInfo.fnc.php
+index 73518da..0c3c2ea 100644
+--- a/ProgramFunctions/StudentsUsersInfo.fnc.php
++++ b/ProgramFunctions/StudentsUsersInfo.fnc.php
+@@ -618,7 +618,8 @@ function _makeStudentAge( $column, $name )
+ 	{
+ 		$datetime1 = date_create( (string) $value[ $column ] );
+ 
+-		$datetime2 = date_create( 'now' );
++		// SIMDATE sim date instead of the server clock.
++		$datetime2 = date_create( DBDate() );
+ 
+ 		$interval = date_diff( $datetime1, $datetime2 );
+ 
+diff --git a/functions/Date.php b/functions/Date.php
+index 84931fd..2a16270 100644
+--- a/functions/Date.php
++++ b/functions/Date.php
+@@ -21,8 +21,64 @@
+  */
+ function DBDate()
+ {
+-	// ISO, eg. 2015-07-10.
+-	return date( 'Y-m-d' );
++	// SIMDATE The school "today" is the sim date when one is set.
++	return SimDate();
++}
++
++/**
++ * SIMDATE Sim Date: the in-world "today" of a roleplay school.
++ *
++ * Set from the hidden Sim_Date/SimDate.php program, stored in the config table
++ * (SIM_DATE, SCHOOL_ID=0). Empty means use the real date.
++ * Config() loads the config table once per request, so this costs no extra query.
++ *
++ * Real event timestamps (logins, logs, created_at...) must keep using date() / CURRENT_TIMESTAMP.
++ *
++ * @see docs/sim-date.md
++ *
++ * @return string Sim date, or the real date if none is set. ISO, eg. 2015-07-10.
++ */
++function SimDate()
++{
++	static $valid = [];
++
++	if ( session_status() !== PHP_SESSION_ACTIVE )
++	{
++		// Too early for Config(), which needs the session.
++		return date( 'Y-m-d' );
++	}
++
++	$sim_date = (string) Config( 'SIM_DATE' );
++
++	if ( $sim_date === '' )
++	{
++		return date( 'Y-m-d' );
++	}
++
++	if ( ! isset( $valid[ $sim_date ] ) )
++	{
++		$valid[ $sim_date ] = SimDateIsValid( $sim_date );
++	}
++
++	// Never let an invalid value into SQL: fall back to the real date.
++	return $valid[ $sim_date ] ? $sim_date : date( 'Y-m-d' );
++}
++
++/**
++ * SIMDATE Is this a real calendar date in YYYY-MM-DD format?
++ *
++ * @param string $date Date.
++ *
++ * @return bool
++ */
++function SimDateIsValid( $date )
++{
++	if ( ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', (string) $date, $matches ) )
++	{
++		return false;
++	}
++
++	return checkdate( (int) $matches[2], (int) $matches[3], (int) $matches[1] );
+ }
+ 
+ 
+@@ -408,8 +464,8 @@ function PrepareDate( $date, $name_attr = '', $allow_na = true, $options = [] )
+ 		if ( $date_exploded['year'] < 1 )
+ 		{
+ 			// Show 80 previous years.
+-			$begin = date( 'Y' ) - 80;
+-			$end = date( 'Y' ) + 5;
++			$begin = mb_substr( DBDate(), 0, 4 ) - 80;
++			$end = mb_substr( DBDate(), 0, 4 ) + 5;
+ 		}
+ 		else
+ 		{
+diff --git a/index.php b/index.php
+index 226df8e..7a2b2e4 100644
+--- a/index.php
++++ b/index.php
+@@ -131,13 +131,14 @@ elseif ( isset( $_POST['USERNAME'] )
+ 	if ( ! $login_RET )
+ 	{
+ 		// Lookup for student $username in DB.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$student_RET = DBGet( "SELECT s.USERNAME,s.STUDENT_ID,s.LAST_LOGIN,
+ 			s.FAILED_LOGIN,s.PASSWORD,se.START_DATE
+ 			FROM students s,student_enrollment se
+ 			WHERE se.STUDENT_ID=s.STUDENT_ID
+ 			AND se.SYEAR='" . Config( 'SYEAR' ) . "'
+-			AND CURRENT_DATE>=se.START_DATE
+-			AND (CURRENT_DATE<=se.END_DATE OR se.END_DATE IS NULL)
++			AND '" . DBDate() . "'>=se.START_DATE
++			AND ('" . DBDate() . "'<=se.END_DATE OR se.END_DATE IS NULL)
+ 			AND UPPER(s.USERNAME)=UPPER('" . $username . "')" );
+ 
+ 		if ( $student_RET
+@@ -148,12 +149,13 @@ elseif ( isset( $_POST['USERNAME'] )
+ 		else
+ 		{
+ 			// Student may be inactive or not verified, see below for corresponding errors.
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$student_RET = DBGet( "SELECT s.USERNAME,s.STUDENT_ID,
+ 				s.LAST_LOGIN,s.FAILED_LOGIN,se.START_DATE,s.PASSWORD
+ 			FROM students s,student_enrollment se
+ 			WHERE se.STUDENT_ID=s.STUDENT_ID
+ 			AND se.SYEAR='" . Config( 'SYEAR' ) . "'
+-			AND (CURRENT_DATE<=se.END_DATE OR se.END_DATE IS NULL)
++			AND ('" . DBDate() . "'<=se.END_DATE OR se.END_DATE IS NULL)
+ 			AND UPPER(s.USERNAME)=UPPER('" . $username . "')" );
+ 
+ 			if ( ! $student_RET
+diff --git a/modules/Accounting/includes/DailyTotals.php b/modules/Accounting/includes/DailyTotals.php
+index bcb0b1d..aea72a8 100644
+--- a/modules/Accounting/includes/DailyTotals.php
++++ b/modules/Accounting/includes/DailyTotals.php
+@@ -7,7 +7,8 @@
+  */
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Accounting/includes/DailyTransactions.php b/modules/Accounting/includes/DailyTransactions.php
+index 399e0cb..5f439f9 100644
+--- a/modules/Accounting/includes/DailyTransactions.php
++++ b/modules/Accounting/includes/DailyTransactions.php
+@@ -7,7 +7,8 @@
+  */
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Accounting/includes/Dashboard.inc.php b/modules/Accounting/includes/Dashboard.inc.php
+index c783deb..1a05d49 100644
+--- a/modules/Accounting/includes/Dashboard.inc.php
++++ b/modules/Accounting/includes/Dashboard.inc.php
+@@ -92,9 +92,11 @@ if ( ! function_exists( 'DashboardAccountingAdmin' ) )
+ 
+ 		krsort( $accounting_RET );
+ 
+-		if ( ! empty( $accounting_RET[date( 'Y-m' )] ) )
++		// SIMDATE sim date instead of the server clock.
++		if ( ! empty( $accounting_RET[mb_substr( DBDate(), 0, 7 )] ) )
+ 		{
+-			$accounting_month = $accounting_RET[date( 'Y-m' )][1];
++			// SIMDATE sim date instead of the server clock.
++			$accounting_month = $accounting_RET[mb_substr( DBDate(), 0, 7 )][1];
+ 
+ 			// Accounting General Balance.
+ 
+diff --git a/modules/Attendance/AddAbsences.php b/modules/Attendance/AddAbsences.php
+index c9a4ccd..1470676 100644
+--- a/modules/Attendance/AddAbsences.php
++++ b/modules/Attendance/AddAbsences.php
+@@ -6,12 +6,14 @@ DrawHeader( ProgramTitle() );
+ 
+ if ( empty( $_REQUEST['month'] ) )
+ {
+-	$_REQUEST['month'] = date( 'm' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['month'] = mb_substr( DBDate(), 5, 2 );
+ }
+ 
+ if ( empty( $_REQUEST['year'] ) )
+ {
+-	$_REQUEST['year'] = date( 'Y' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['year'] = mb_substr( DBDate(), 0, 4 );
+ }
+ else
+ {
+@@ -318,7 +320,8 @@ if ( ! $_REQUEST['modfunc'] )
+ 			{
+ 				$disabled = ' DISABLED';
+ 			}
+-			elseif ( date( 'Y-m-d' ) === $this_date )
++			// SIMDATE sim date instead of the server clock.
++			elseif ( DBDate() === $this_date )
+ 			{
+ 				$disabled = ' checked';
+ 			}
+diff --git a/modules/Attendance/Percent.php b/modules/Attendance/Percent.php
+index c2cd223..3cc12c9 100644
+--- a/modules/Attendance/Percent.php
++++ b/modules/Attendance/Percent.php
+@@ -29,7 +29,8 @@ $report_select = SelectInput(
+ DrawHeader( $report_select );
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01', 'set' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01', 'set' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate(), 'set' );
+diff --git a/modules/Attendance/includes/DailySummary.php b/modules/Attendance/includes/DailySummary.php
+index d0c7b20..afdf759 100644
+--- a/modules/Attendance/includes/DailySummary.php
++++ b/modules/Attendance/includes/DailySummary.php
+@@ -13,7 +13,8 @@ if ( $_REQUEST['period_id'] === 'all' )
+ }
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+@@ -302,7 +303,8 @@ if ( $_REQUEST['student_id']
+ 		$school_date = ProperDate( $value['SCHOOL_DATE'], 'short' );
+ 
+ 		// Remove year to gain space.
+-		$school_date = str_replace( date( 'Y' ), '', $school_date );
++		// SIMDATE sim date instead of the server clock.
++		$school_date = str_replace( mb_substr( DBDate(), 0, 4 ), '', $school_date );
+ 
+ 		$school_date = strip_tags( $school_date );
+ 
+@@ -367,7 +369,8 @@ else
+ 		$proper_date = ProperDate( $value['SCHOOL_DATE'], 'short' );
+ 
+ 		// Remove year to gain space.
+-		$proper_date = str_replace( date( 'Y' ), '', $proper_date );
++		// SIMDATE sim date instead of the server clock.
++		$proper_date = str_replace( mb_substr( DBDate(), 0, 4 ), '', $proper_date );
+ 
+ 		$proper_date = strip_tags( $proper_date );
+ 
+diff --git a/modules/Attendance/includes/Dashboard.inc.php b/modules/Attendance/includes/Dashboard.inc.php
+index e904524..3f0562d 100644
+--- a/modules/Attendance/includes/Dashboard.inc.php
++++ b/modules/Attendance/includes/Dashboard.inc.php
+@@ -45,6 +45,7 @@ if ( ! function_exists( 'DashboardAttendanceAdmin' ) )
+ 		$absences_today = 0;
+ 
+ 		// Absences by day.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$absences_RET = DBGet( "SELECT ad.SCHOOL_DATE,
+ 		SUM(CASE WHEN ad.STATE_VALUE='0.0' THEN 1 END) AS ABSENT,
+ 		SUM(CASE WHEN ad.STATE_VALUE='0.5' THEN 1 END) AS HALF_DAY
+@@ -53,7 +54,7 @@ if ( ! function_exists( 'DashboardAttendanceAdmin' ) )
+ 		AND ad.SYEAR=ssm.SYEAR
+ 		AND ad.STUDENT_ID=ssm.STUDENT_ID
+ 		AND ssm.SCHOOL_ID='" . UserSchool() . "'
+-		AND ad.SCHOOL_DATE<=CURRENT_DATE
++		AND ad.SCHOOL_DATE<='" . DBDate() . "'
+ 		AND (ad.SCHOOL_DATE BETWEEN ssm.START_DATE AND ssm.END_DATE
+ 			OR (ssm.END_DATE IS NULL AND ssm.START_DATE<=ad.SCHOOL_DATE))
+ 		GROUP BY ad.SCHOOL_DATE
+diff --git a/modules/Attendance/includes/StudentSummary.php b/modules/Attendance/includes/StudentSummary.php
+index a51206a..81bf46e 100644
+--- a/modules/Attendance/includes/StudentSummary.php
++++ b/modules/Attendance/includes/StudentSummary.php
+@@ -5,7 +5,8 @@ $_REQUEST['student_id'] = issetVal( $_REQUEST['student_id'] );
+ $_REQUEST['period_id'] = issetVal( $_REQUEST['period_id'] );
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Discipline/CategoryBreakdown.php b/modules/Discipline/CategoryBreakdown.php
+index 112ed13..018a408 100644
+--- a/modules/Discipline/CategoryBreakdown.php
++++ b/modules/Discipline/CategoryBreakdown.php
+@@ -13,7 +13,8 @@ $min_date = DBGetOne( "SELECT min(SCHOOL_DATE) AS MIN_DATE
+ 
+ if ( ! $min_date )
+ {
+-	$min_date = date( 'Y-m' ) . '-01';
++	// SIMDATE sim date instead of the server clock.
++	$min_date = mb_substr( DBDate(), 0, 7 ) . '-01';
+ }
+ 
+ // Set start date.
+diff --git a/modules/Discipline/CategoryBreakdownTime.php b/modules/Discipline/CategoryBreakdownTime.php
+index 0786977..0f4b245 100644
+--- a/modules/Discipline/CategoryBreakdownTime.php
++++ b/modules/Discipline/CategoryBreakdownTime.php
+@@ -13,7 +13,8 @@ $min_date = DBGetOne( "SELECT min(SCHOOL_DATE) AS MIN_DATE
+ 
+ if ( ! $min_date )
+ {
+-	$min_date = date( 'Y-m' ) . '-01';
++	// SIMDATE sim date instead of the server clock.
++	$min_date = mb_substr( DBDate(), 0, 7 ) . '-01';
+ }
+ 
+ // Set start date.
+diff --git a/modules/Discipline/StudentFieldBreakdown.php b/modules/Discipline/StudentFieldBreakdown.php
+index 2152875..2a175a7 100644
+--- a/modules/Discipline/StudentFieldBreakdown.php
++++ b/modules/Discipline/StudentFieldBreakdown.php
+@@ -13,7 +13,8 @@ $min_date = DBGetOne( "SELECT min(SCHOOL_DATE) AS MIN_DATE
+ 
+ if ( ! $min_date )
+ {
+-	$min_date = date( 'Y-m' ) . '-01';
++	// SIMDATE sim date instead of the server clock.
++	$min_date = mb_substr( DBDate(), 0, 7 ) . '-01';
+ }
+ 
+ // Set start date.
+diff --git a/modules/Discipline/includes/Dashboard.inc.php b/modules/Discipline/includes/Dashboard.inc.php
+index 3a4ad25..0724fa4 100644
+--- a/modules/Discipline/includes/Dashboard.inc.php
++++ b/modules/Discipline/includes/Dashboard.inc.php
+@@ -54,8 +54,9 @@ if ( ! function_exists( 'DashboardDisciplineAdmin' ) )
+ 		ORDER BY YEAR_MONTH_DATE DESC
+ 		LIMIT 10" );
+ 
++		// SIMDATE sim date instead of the server clock.
+ 		if ( ! empty( $referrals_RET[1] )
+-			&& $referrals_RET[1]['YEAR_MONTH_DATE'] === date( 'Y-m' ) )
++			&& $referrals_RET[1]['YEAR_MONTH_DATE'] === mb_substr( DBDate(), 0, 7 ) )
+ 		{
+ 			// Referrals this month.
+ 			$referrals_nb = (int) $referrals_RET[1]['REFERRALS_NB'];
+diff --git a/modules/Eligibility/EnterEligibility.php b/modules/Eligibility/EnterEligibility.php
+index dc3b0a6..717d5fd 100644
+--- a/modules/Eligibility/EnterEligibility.php
++++ b/modules/Eligibility/EnterEligibility.php
+@@ -26,7 +26,8 @@ foreach ( (array) $eligibility_config as $value )
+ }
+ 
+ // Day of the week: 1 (for Monday) through 7 (for Sunday).
+-$today = date( 'w' ) ? date( 'w' ) : 7;
++// SIMDATE sim date instead of the server clock.
++$today = date( 'w', strtotime( DBDate() . ' 12:00' ) ) ? date( 'w', strtotime( DBDate() . ' 12:00' ) ) : 7;
+ 
+ $days = [ _( 'Sunday' ), _( 'Monday' ), _( 'Tuesday' ), _( 'Wednesday' ), _( 'Thursday' ), _( 'Friday' ), _( 'Saturday' ) ];
+ 
+@@ -40,9 +41,11 @@ if ( mb_strlen( $END_MINUTE ) == 1 )
+ 	$END_MINUTE = '0' . $END_MINUTE;
+ }
+ 
+-$start_date = date( 'Y-m-d', time() - ( $today - $START_DAY ) * 60 * 60 * 24 );
++// SIMDATE sim date instead of the server clock.
++$start_date = date( 'Y-m-d', strtotime( DBDate() . ' 12:00' ) - ( $today - $START_DAY ) * 60 * 60 * 24 );
+ 
+-$end_date = date( 'Y-m-d', time() + ( $END_DAY - $today ) * 60 * 60 * 24 );
++// SIMDATE sim date instead of the server clock.
++$end_date = date( 'Y-m-d', strtotime( DBDate() . ' 12:00' ) + ( $END_DAY - $today ) * 60 * 60 * 24 );
+ 
+ $current_RET = DBGet( "SELECT ELIGIBILITY_CODE,STUDENT_ID
+ 	FROM eligibility
+@@ -69,6 +72,7 @@ if ( $_REQUEST['modfunc'] == 'gradebook' )
+ 	if ( ! empty( $gradebook_config['WEIGHT'] ) )
+ 	{
+ 		// @since 10.0 Use GROUP BY instead of DISTINCT ON for MySQL compatibility
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$points_RET = DBGet( "SELECT s.STUDENT_ID,gt.ASSIGNMENT_TYPE_ID,
+ 			sum(CASE WHEN gg.POINTS<0 THEN '0' ELSE gg.POINTS END) AS PARTIAL_POINTS,
+ 			sum(CASE WHEN gg.POINTS<0 THEN '0' ELSE ga.POINTS END) AS PARTIAL_TOTAL,gt.FINAL_GRADE_PERCENT
+@@ -82,13 +86,14 @@ if ( $_REQUEST['modfunc'] == 'gradebook' )
+ 		gradebook_assignment_types gt
+ 		WHERE gt.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID
+ 		AND gt.COURSE_ID='" . (int) $course_id . "'
+-		AND ((ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-		AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE) OR gg.POINTS IS NOT NULL)
++		AND ((ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++		AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE) OR gg.POINTS IS NOT NULL)
+ 		GROUP BY s.STUDENT_ID,ss.START_DATE,gt.ASSIGNMENT_TYPE_ID,gt.FINAL_GRADE_PERCENT", [], [ 'STUDENT_ID' ] );
+ 	}
+ 	else
+ 	{
+ 		// @since 10.0 Use GROUP BY instead of DISTINCT ON for MySQL compatibility
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$points_RET = DBGet( "SELECT s.STUDENT_ID,'-1' AS ASSIGNMENT_TYPE_ID,
+ 			sum(CASE WHEN gg.POINTS<0 THEN '0' ELSE gg.POINTS END) AS PARTIAL_POINTS,
+ 			sum(CASE WHEN gg.POINTS<0 THEN '0' ELSE ga.POINTS END) AS PARTIAL_TOTAL,'1' AS FINAL_GRADE_PERCENT
+@@ -99,8 +104,8 @@ if ( $_REQUEST['modfunc'] == 'gradebook' )
+ 			" IN (" . GetChildrenMP( 'SEM', UserMP() ) . ")" :
+ 			"='" . UserMP() . "'" ) . ")
+ 		LEFT OUTER JOIN gradebook_grades gg ON (gg.STUDENT_ID=s.STUDENT_ID AND gg.ASSIGNMENT_ID=ga.ASSIGNMENT_ID AND gg.COURSE_PERIOD_ID=ss.COURSE_PERIOD_ID)
+-		WHERE ((ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-		AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE) OR gg.POINTS IS NOT NULL)
++		WHERE ((ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++		AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE) OR gg.POINTS IS NOT NULL)
+ 		GROUP BY s.STUDENT_ID,ss.START_DATE", [], [ 'STUDENT_ID' ] );
+ 	}
+ 
+diff --git a/modules/Eligibility/Student.php b/modules/Eligibility/Student.php
+index 6277248..7dcf819 100644
+--- a/modules/Eligibility/Student.php
++++ b/modules/Eligibility/Student.php
+@@ -67,9 +67,11 @@ if ( UserStudentID()
+ 	}
+ 
+ 	// Day of the week: 1 (for Monday) through 7 (for Sunday).
+-	$today = date( 'w' ) ? date( 'w' ) : 7;
++	// SIMDATE sim date instead of the server clock.
++	$today = date( 'w', strtotime( DBDate() . ' 12:00' ) ) ? date( 'w', strtotime( DBDate() . ' 12:00' ) ) : 7;
+ 
+-	$start = time() - ( $today - $START_DAY ) * 60 * 60 * 24;
++	// SIMDATE sim date instead of the server clock.
++	$start = strtotime( DBDate() . ' 12:00' ) - ( $today - $START_DAY ) * 60 * 60 * 24;
+ 
+ 	if ( empty( $_REQUEST['start_date'] ) )
+ 	{
+diff --git a/modules/Eligibility/StudentList.php b/modules/Eligibility/StudentList.php
+index bdedd6e..281a6a4 100644
+--- a/modules/Eligibility/StudentList.php
++++ b/modules/Eligibility/StudentList.php
+@@ -9,9 +9,11 @@ foreach ( (array) $eligibility_config as $value )
+ }
+ 
+ // Day of the week: 1 (for Monday) through 7 (for Sunday).
+-$today = date( 'w' ) ? date( 'w' ) : 7;
++// SIMDATE sim date instead of the server clock.
++$today = date( 'w', strtotime( DBDate() . ' 12:00' ) ) ? date( 'w', strtotime( DBDate() . ' 12:00' ) ) : 7;
+ 
+-$start = time() - ( $today - $START_DAY ) * 60 * 60 * 24;
++// SIMDATE sim date instead of the server clock.
++$start = strtotime( DBDate() . ' 12:00' ) - ( $today - $START_DAY ) * 60 * 60 * 24;
+ 
+ if ( empty( $_REQUEST['start_date'] ) )
+ {
+@@ -19,7 +21,8 @@ if ( empty( $_REQUEST['start_date'] ) )
+ 
+ 	$start_date = date( 'Y-m-d', $start_time );
+ 
+-	$end_date = date( 'Y-m-d' );
++	// SIMDATE sim date instead of the server clock.
++	$end_date = DBDate();
+ }
+ else
+ {
+diff --git a/modules/Eligibility/TeacherCompletion.php b/modules/Eligibility/TeacherCompletion.php
+index 9b54fa2..45131f7 100644
+--- a/modules/Eligibility/TeacherCompletion.php
++++ b/modules/Eligibility/TeacherCompletion.php
+@@ -14,9 +14,11 @@ foreach ( (array) $eligibility_config as $value )
+ }
+ 
+ // Day of the week: 1 (for Monday) through 7 (for Sunday).
+-$today = date( 'w' ) ? date( 'w' ) : 7;
++// SIMDATE sim date instead of the server clock.
++$today = date( 'w', strtotime( DBDate() . ' 12:00' ) ) ? date( 'w', strtotime( DBDate() . ' 12:00' ) ) : 7;
+ 
+-$start = time() - ( $today - $START_DAY ) * 60 * 60 * 24;
++// SIMDATE sim date instead of the server clock.
++$start = strtotime( DBDate() . ' 12:00' ) - ( $today - $START_DAY ) * 60 * 60 * 24;
+ 
+ if ( empty( $_REQUEST['start_date'] ) )
+ {
+@@ -24,7 +26,8 @@ if ( empty( $_REQUEST['start_date'] ) )
+ 
+ 	$start_date = date( 'Y-m-d', $start_time );
+ 
+-	$end_date = date( 'Y-m-d' );
++	// SIMDATE sim date instead of the server clock.
++	$end_date = DBDate();
+ }
+ else
+ {
+diff --git a/modules/Eligibility/includes/Dashboard.inc.php b/modules/Eligibility/includes/Dashboard.inc.php
+index 1b2e6f4..998cda2 100644
+--- a/modules/Eligibility/includes/Dashboard.inc.php
++++ b/modules/Eligibility/includes/Dashboard.inc.php
+@@ -42,12 +42,13 @@ if ( ! function_exists( 'DashboardEligibilityAdmin' ) )
+ 	 */
+ 	function DashboardEligibilityAdmin()
+ 	{
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$activities_nb = DBGetOne( "SELECT COUNT(ID) AS ACTIVITIES_NB
+ 		FROM eligibility_activities
+ 		WHERE SYEAR='" . UserSyear() . "'
+ 		AND SCHOOL_ID='" . UserSchool() . "'
+-		AND START_DATE<=CURRENT_DATE
+-		AND END_DATE>=CURRENT_DATE" );
++		AND START_DATE<='" . DBDate() . "'
++		AND END_DATE>='" . DBDate() . "'" );
+ 
+ 		$data = [
+ 			_( 'Activities' ) => $activities_nb,
+@@ -61,13 +62,14 @@ if ( ! function_exists( 'DashboardEligibilityAdmin' ) )
+ 			return [];
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$activity_students_RET = DBGet( "SELECT TITLE,
+ 		COUNT(sea.STUDENT_ID) AS STUDENTS_NB
+ 		FROM eligibility_activities ea, student_eligibility_activities sea
+ 		WHERE ea.SYEAR='" . UserSyear() . "'
+ 		AND ea.SCHOOL_ID='" . UserSchool() . "'
+-		AND ea.START_DATE<=CURRENT_DATE
+-		AND ea.END_DATE>=CURRENT_DATE
++		AND ea.START_DATE<='" . DBDate() . "'
++		AND ea.END_DATE>='" . DBDate() . "'
+ 		AND sea.SYEAR=ea.SYEAR
+ 		AND ea.ID=sea.ACTIVITY_ID
+ 		GROUP BY ea.TITLE
+diff --git a/modules/Food_Service/BalanceReport.php b/modules/Food_Service/BalanceReport.php
+index 7bdb831..8e801ff 100644
+--- a/modules/Food_Service/BalanceReport.php
++++ b/modules/Food_Service/BalanceReport.php
+@@ -1,6 +1,7 @@
+ <?php
+ 
+-$date = RequestedDate( 'date', DBDate(), 'set' );
++// SIMDATE real date: compared with real timestamps, not a school day.
++$date = RequestedDate( 'date', date( 'Y-m-d' ), 'set' );
+ 
+ if ( empty( $_SESSION['FSA_type'] ) )
+ {
+diff --git a/modules/Food_Service/DailyMenus.php b/modules/Food_Service/DailyMenus.php
+index 874aceb..549dea6 100644
+--- a/modules/Food_Service/DailyMenus.php
++++ b/modules/Food_Service/DailyMenus.php
+@@ -4,12 +4,14 @@ DrawHeader( ProgramTitle() );
+ 
+ if ( empty( $_REQUEST['month'] ) )
+ {
+-	$_REQUEST['month'] = date( 'm' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['month'] = mb_substr( DBDate(), 5, 2 );
+ }
+ 
+ if ( empty( $_REQUEST['year'] ) )
+ {
+-	$_REQUEST['year'] = date( 'Y' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['year'] = mb_substr( DBDate(), 0, 4 );
+ }
+ 
+ $last = 31;
+diff --git a/modules/Food_Service/MenuReports.php b/modules/Food_Service/MenuReports.php
+index b31457c..b9d07ba 100644
+--- a/modules/Food_Service/MenuReports.php
++++ b/modules/Food_Service/MenuReports.php
+@@ -6,7 +6,8 @@ $_REQUEST['type_select'] = issetVal( $_REQUEST['type_select'], '' );
+ $start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
+ 
+ // Set end date.
+-$end_date = RequestedDate( 'end', DBDate() );
++// SIMDATE real date: compared with real timestamps, not a school day.
++$end_date = RequestedDate( 'end', date( 'Y-m-d' ) );
+ 
+ DrawHeader( ProgramTitle() );
+ 
+diff --git a/modules/Food_Service/Statements.php b/modules/Food_Service/Statements.php
+index e6edfb9..df0c2a3 100644
+--- a/modules/Food_Service/Statements.php
++++ b/modules/Food_Service/Statements.php
+@@ -4,7 +4,8 @@
+ $start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01', 'set' );
+ 
+ // Set end date.
+-$end_date = RequestedDate( 'end', DBDate(), 'set' );
++// SIMDATE real date: compared with real timestamps, not a school day.
++$end_date = RequestedDate( 'end', date( 'Y-m-d' ), 'set' );
+ 
+ if ( empty( $_SESSION['FSA_type'] ) )
+ {
+diff --git a/modules/Food_Service/Students/Accounts.php b/modules/Food_Service/Students/Accounts.php
+index 1c64f03..c895a15 100644
+--- a/modules/Food_Service/Students/Accounts.php
++++ b/modules/Food_Service/Students/Accounts.php
+@@ -174,6 +174,7 @@ if ( UserStudentID() && ! $_REQUEST['modfunc'] )
+ 	$student = $student[1];
+ 
+ 	// Find other students associated with the same account.
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$xstudents = DBGet( "SELECT s.STUDENT_ID," . DisplayNameSQL( 's' ) . " AS FULL_NAME
+ 	FROM students s,food_service_student_accounts fssa
+ 	WHERE fssa.ACCOUNT_ID='" . (int) $student['ACCOUNT_ID'] . "'
+@@ -184,7 +185,7 @@ if ( UserStudentID() && ! $_REQUEST['modfunc'] )
+ 		FROM student_enrollment
+ 		WHERE STUDENT_ID=s.STUDENT_ID
+ 		AND SYEAR='" . UserSyear() . "'
+-		AND (START_DATE<=CURRENT_DATE AND (END_DATE IS NULL OR CURRENT_DATE<=END_DATE)))" ) );
++		AND (START_DATE<='" . DBDate() . "' AND (END_DATE IS NULL OR '" . DBDate() . "'<=END_DATE)))" ) );
+ 
+ 	if ( $student['ACCOUNT_ID'] )
+ 	{
+diff --git a/modules/Food_Service/Students/Reminders.php b/modules/Food_Service/Students/Reminders.php
+index 9a3aca8..d836d55 100644
+--- a/modules/Food_Service/Students/Reminders.php
++++ b/modules/Food_Service/Students/Reminders.php
+@@ -35,10 +35,11 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 		if ( isset( $_REQUEST['year_end'] )
+ 			&& $_REQUEST['year_end'] === 'Y' )
+ 		{
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$extra['SELECT'] .= ",(SELECT count(1)
+ 				FROM attendance_calendar
+ 				WHERE CALENDAR_ID=ssm.CALENDAR_ID
+-				AND SCHOOL_DATE>CURRENT_DATE) AS DAYS,
++				AND SCHOOL_DATE>'" . DBDate() . "') AS DAYS,
+ 			(SELECT -sum(fsti.AMOUNT)
+ 				FROM food_service_transactions fst,food_service_transaction_items fsti
+ 				WHERE fst.SYEAR=ssm.SYEAR
+@@ -52,9 +53,9 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 			(SELECT count(1)
+ 				FROM attendance_calendar
+ 				WHERE CALENDAR_ID=ssm.CALENDAR_ID
+-				AND SCHOOL_DATE BETWEEN (CURRENT_DATE - INTERVAL " .
++				AND SCHOOL_DATE BETWEEN (CAST('" . DBDate() . "' AS DATE) - INTERVAL " .
+ 				( $DatabaseType === 'mysql' ? '14 DAY' : "'14 DAY'" ) . ")
+-				AND (CURRENT_DATE - INTERVAL " .
++				AND (CAST('" . DBDate() . "' AS DATE) - INTERVAL " .
+ 				( $DatabaseType === 'mysql' ? '1 DAY' : "'1 DAY'" ) . ")) AS T_DAYS";
+ 		}
+ 
+@@ -141,6 +142,7 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 			$student['TEACHER'] = ! empty( $teacher[1]['FULL_NAME'] ) ?
+ 				$teacher[1]['FULL_NAME'] : '';
+ 
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$xstudents = DBGet( "SELECT " . DisplayNameSQL( 's' ) . " AS FULL_NAME
+ 			FROM students s,food_service_student_accounts fssa
+ 			WHERE fssa.ACCOUNT_ID='" . (int) $student['ACCOUNT_ID'] . "'
+@@ -150,7 +152,7 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 				FROM student_enrollment
+ 				WHERE STUDENT_ID=s.STUDENT_ID
+ 				AND SYEAR='" . UserSyear() . "'
+-				AND (START_DATE<=CURRENT_DATE AND (END_DATE IS NULL OR CURRENT_DATE<=END_DATE)))" );
++				AND (START_DATE<='" . DBDate() . "' AND (END_DATE IS NULL OR '" . DBDate() . "'<=END_DATE)))" );
+ 
+ 			// @since 9.3 SQL use CAST(X AS char(X)) instead of to_char() for MySQL compatibility
+ 			$last_deposit = DBGet( "SELECT (SELECT sum(AMOUNT)
+diff --git a/modules/Food_Service/Students/Statements.php b/modules/Food_Service/Students/Statements.php
+index cc80883..2872ef8 100644
+--- a/modules/Food_Service/Students/Statements.php
++++ b/modules/Food_Service/Students/Statements.php
+@@ -35,6 +35,7 @@ if ( UserStudentID() && ! $_REQUEST['modfunc'] )
+ 	$student = $student[1];
+ 
+ 	// Find other students associated with the same account.
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$xstudents = DBGet( "SELECT s.STUDENT_ID," . DisplayNameSQL( 's' ) . " AS FULL_NAME
+ 	FROM students s,food_service_student_accounts fssa
+ 	WHERE fssa.ACCOUNT_ID='" . (int) $student['ACCOUNT_ID'] . "'
+@@ -44,7 +45,7 @@ if ( UserStudentID() && ! $_REQUEST['modfunc'] )
+ 		FROM student_enrollment
+ 		WHERE STUDENT_ID=s.STUDENT_ID
+ 		AND SYEAR='" . UserSyear() . "'
+-		AND (START_DATE<=CURRENT_DATE AND (END_DATE IS NULL OR CURRENT_DATE<=END_DATE)))" );
++		AND (START_DATE<='" . DBDate() . "' AND (END_DATE IS NULL OR '" . DBDate() . "'<=END_DATE)))" );
+ 
+ 	$student_select = '';
+ 
+diff --git a/modules/Food_Service/TransactionsReport.php b/modules/Food_Service/TransactionsReport.php
+index d0dd2c7..741dfb8 100644
+--- a/modules/Food_Service/TransactionsReport.php
++++ b/modules/Food_Service/TransactionsReport.php
+@@ -4,7 +4,8 @@
+ $start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01', 'set' );
+ 
+ // Set end date.
+-$end_date = RequestedDate( 'end', DBDate(), 'set' );
++// SIMDATE real date: compared with real timestamps, not a school day.
++$end_date = RequestedDate( 'end', date( 'Y-m-d' ), 'set' );
+ 
+ DrawHeader( ProgramTitle() );
+ 
+diff --git a/modules/Grades/AnomalousGrades.php b/modules/Grades/AnomalousGrades.php
+index ea96ab1..55355b2 100644
+--- a/modules/Grades/AnomalousGrades.php
++++ b/modules/Grades/AnomalousGrades.php
+@@ -82,7 +82,8 @@ $extra['WHERE'] .= ' AND (';
+ 
+ if ( ! empty( $_REQUEST['missing'] ) )
+ {
+-	$extra['WHERE'] .= 'gg.POINTS IS NULL AND ((ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE) OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)) OR ';
++	// SIMDATE sim date instead of CURRENT_DATE.
++	$extra['WHERE'] .= 'gg.POINTS IS NULL AND ((ga.ASSIGNED_DATE IS NULL OR ' . "'" . DBDate() . "'" . '>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR ' . "'" . DBDate() . "'" . '>=ga.DUE_DATE) OR ' . "'" . DBDate() . "'" . '>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)) OR ';
+ }
+ 
+ // excused or negative
+diff --git a/modules/Grades/Grades.php b/modules/Grades/Grades.php
+index 79caffe..1fa6ed9 100644
+--- a/modules/Grades/Grades.php
++++ b/modules/Grades/Grades.php
+@@ -84,11 +84,12 @@ if ( $_REQUEST['type_id']
+ 	RedirectURL( 'type_id' );
+ }
+ 
++// SIMDATE sim date instead of CURRENT_DATE.
+ $assignments_RET = DBGet( "SELECT ga.ASSIGNMENT_ID,ga.ASSIGNMENT_TYPE_ID,ga.TITLE,ga.POINTS,ga.ASSIGNED_DATE,
+ ga.DUE_DATE,ga.DEFAULT_POINTS," . _SQLUnixTimestamp( 'DUE_DATE' ) . " AS DUE_EPOCH,ga.WEIGHT,
+-CASE WHEN (ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ASSIGNED_DATE)
+-	AND (DUE_DATE IS NULL OR CURRENT_DATE>=DUE_DATE)
+-	OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
++CASE WHEN (ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ASSIGNED_DATE)
++	AND (DUE_DATE IS NULL OR '" . DBDate() . "'>=DUE_DATE)
++	OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
+ THEN 'Y' ELSE NULL END AS DUE
+ FROM gradebook_assignments ga,gradebook_assignment_types gat
+ WHERE ga.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+@@ -303,11 +304,12 @@ if ( UserStudentID() )
+ 
+ 	$count_assignments = count( (array) $assignments_RET );
+ 
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$extra['SELECT'] = ",ga.ASSIGNMENT_TYPE_ID,ga.ASSIGNMENT_ID,ga.TITLE,ga.POINTS AS TOTAL_POINTS,
+ 		ga.SUBMISSION,'' AS PERCENT_GRADE,'' AS LETTER_GRADE,ga.WEIGHT,
+-		CASE WHEN (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-			AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE)
+-			OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
++		CASE WHEN (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++			AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE)
++			OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
+ 			THEN 'Y' ELSE NULL END AS DUE";
+ 
+ 	$extra['SELECT'] .= ',gg.POINTS,gg.COMMENT';
+diff --git a/modules/Grades/InputFinalGrades.php b/modules/Grades/InputFinalGrades.php
+index 490c4e4..d4e06a9 100644
+--- a/modules/Grades/InputFinalGrades.php
++++ b/modules/Grades/InputFinalGrades.php
+@@ -991,10 +991,11 @@ $mps_select .= '</select><label for="mp_select" class="a11y-hidden">' . _( 'Mark
+ if ( User( 'PROFILE' ) === 'teacher'
+ 	&& mb_strpos( $_REQUEST['modname'], 'TeacherPrograms' ) === false )
+ {
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$is_after_grade_post_start_date = DBGetOne( "SELECT 1
+ 		FROM school_marking_periods
+ 		WHERE MARKING_PERIOD_ID='" . (int) $_REQUEST['mp'] . "'
+-		AND (POST_START_DATE IS NULL OR POST_START_DATE<=CURRENT_DATE)" );
++		AND (POST_START_DATE IS NULL OR POST_START_DATE<='" . DBDate() . "')" );
+ 
+ 	$_ROSARIO['allow_edit'] = ( ProgramConfig( 'grades', 'GRADES_TEACHER_ALLOW_EDIT' )
+ 		&& $is_after_grade_post_start_date )
+diff --git a/modules/Grades/ProgressReports.php b/modules/Grades/ProgressReports.php
+index 5e6f65f..a6ad7e0 100644
+--- a/modules/Grades/ProgressReports.php
++++ b/modules/Grades/ProgressReports.php
+@@ -70,7 +70,8 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 	//$LO_columns += array('POINTS' => _('Points'),'PERCENT_GRADE' => _('Percent'),'LETTER_GRADE' => _('Letter'),'COMMENT' => _('Comment'));
+ 	$LO_columns += [ 'COMMENT' => _( 'Comment' ) ];
+ 
+-	$extra2['SELECT_ONLY'] = "ga.ASSIGNMENT_ID,ga.TITLE,ga.ASSIGNED_DATE,ga.DUE_DATE,gt.ASSIGNMENT_TYPE_ID,gg.POINTS,ga.POINTS AS TOTAL_POINTS,gt.FINAL_GRADE_PERCENT,gg.COMMENT,gg.POINTS AS PERCENT_GRADE,gg.POINTS AS LETTER_GRADE,ga.WEIGHT,CASE WHEN (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)) THEN 'Y' ELSE NULL END AS DUE,gt.TITLE AS CATEGORY_TITLE";
++	// SIMDATE sim date instead of CURRENT_DATE.
++	$extra2['SELECT_ONLY'] = "ga.ASSIGNMENT_ID,ga.TITLE,ga.ASSIGNED_DATE,ga.DUE_DATE,gt.ASSIGNMENT_TYPE_ID,gg.POINTS,ga.POINTS AS TOTAL_POINTS,gt.FINAL_GRADE_PERCENT,gg.COMMENT,gg.POINTS AS PERCENT_GRADE,gg.POINTS AS LETTER_GRADE,ga.WEIGHT,CASE WHEN (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)) THEN 'Y' ELSE NULL END AS DUE,gt.TITLE AS CATEGORY_TITLE";
+ 
+ 	$extra2['FROM'] = '';
+ 
+@@ -79,7 +80,8 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 	if ( isset( $_REQUEST['exclude_notdue'] )
+ 		&& $_REQUEST['exclude_notdue'] == 'Y' )
+ 	{
+-		$extra2['WHERE'] .= " AND (gg.POINTS IS NOT NULL OR (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE) OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
++		// SIMDATE sim date instead of CURRENT_DATE.
++		$extra2['WHERE'] .= " AND (gg.POINTS IS NOT NULL OR (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE) OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
+ 	}
+ 
+ 	if ( isset( $_REQUEST['exclude_ec'] )
+@@ -171,7 +173,8 @@ if ( $_REQUEST['modfunc'] === 'save' )
+ 			$extra['FROM'] .= " JOIN gradebook_assignments ga ON ((ga.COURSE_PERIOD_ID='" . (int) $cp_id . "' OR ga.COURSE_ID='" . (int) $course_id . "' AND ga.STAFF_ID='" . (int) $teacher_id . "') AND ga.MARKING_PERIOD_ID='" . UserMP() . "')
+ 				LEFT OUTER JOIN gradebook_grades gg ON (gg.STUDENT_ID=s.STUDENT_ID AND gg.ASSIGNMENT_ID=ga.ASSIGNMENT_ID AND gg.COURSE_PERIOD_ID='" . (int) $cp_id . "'),gradebook_assignment_types gt";
+ 
+-			$extra['WHERE'] .= " AND gt.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID AND gt.COURSE_ID='" . (int) $course_id . "' AND (gg.POINTS IS NOT NULL OR (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE) OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
++			// SIMDATE sim date instead of CURRENT_DATE.
++			$extra['WHERE'] .= " AND gt.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID AND gt.COURSE_ID='" . (int) $course_id . "' AND (gg.POINTS IS NOT NULL OR (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE) OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
+ 
+ 			$extra['WHERE'] .= " AND s.STUDENT_ID='" . (int) $student['STUDENT_ID'] . "'";
+ 
+diff --git a/modules/Grades/StudentGrades.php b/modules/Grades/StudentGrades.php
+index 381f9fe..d1547a8 100644
+--- a/modules/Grades/StudentGrades.php
++++ b/modules/Grades/StudentGrades.php
+@@ -125,7 +125,8 @@ if ( UserStudentID()
+ 				JOIN schedule ss ON (ss.STUDENT_ID=s.STUDENT_ID AND ss.SYEAR='" . UserSyear() . "'";
+ 
+ 				// @since 10.9.1 SQL Show Gradebook Grades of Inactive Students (Course status, maybe dropped as of today)
+-				$sql .= " AND ss.MARKING_PERIOD_ID IN (" . GetAllMP( 'QTR', UserMP() ) . ") AND CURRENT_DATE>=ss.START_DATE";
++				// SIMDATE sim date instead of CURRENT_DATE.
++				$sql .= " AND ss.MARKING_PERIOD_ID IN (" . GetAllMP( 'QTR', UserMP() ) . ") AND '" . DBDate() . "'>=ss.START_DATE";
+ 
+ 				$sql .= ") JOIN course_periods cp ON (cp.COURSE_PERIOD_ID=ss.COURSE_PERIOD_ID AND cp.COURSE_PERIOD_ID='" . (int) $course_period_id . "')
+ 				JOIN student_enrollment ssm ON (ssm.STUDENT_ID=s.STUDENT_ID AND ssm.SYEAR=ss.SYEAR AND ssm.SCHOOL_ID='" . UserSchool() . "'";
+@@ -136,18 +137,20 @@ if ( UserStudentID()
+ 				}
+ 				else
+ 				{
+-					$sql .= " AND (CURRENT_DATE>=ssm.START_DATE AND (ssm.END_DATE IS NULL OR CURRENT_DATE<=ssm.END_DATE))";
++					// SIMDATE sim date instead of CURRENT_DATE.
++					$sql .= " AND ('" . DBDate() . "'>=ssm.START_DATE AND (ssm.END_DATE IS NULL OR '" . DBDate() . "'<=ssm.END_DATE))";
+ 				}
+ 
+ 				$sql .= ") JOIN gradebook_assignments ga ON (((ga.COURSE_PERIOD_ID=cp.COURSE_PERIOD_ID OR ga.COURSE_ID=cp.COURSE_ID) AND ga.STAFF_ID=cp.TEACHER_ID) AND ga.MARKING_PERIOD_ID='" . UserMP() . "') LEFT OUTER JOIN gradebook_grades gg ON (gg.STUDENT_ID=s.STUDENT_ID AND gg.ASSIGNMENT_ID=ga.ASSIGNMENT_ID AND gg.COURSE_PERIOD_ID=cp.COURSE_PERIOD_ID),gradebook_assignment_types gt";
+ 
++				// SIMDATE sim date instead of CURRENT_DATE.
+ 				$sql .= " WHERE gt.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID AND gt.COURSE_ID=cp.COURSE_ID
+ 				AND (gg.POINTS IS NOT NULL
+-					OR (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-					AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=(ga.DUE_DATE + INTERVAL " .
++					OR (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++					AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=(ga.DUE_DATE + INTERVAL " .
+ 					( $DatabaseType === 'mysql' ? (int) $gradebook_config[$staff_id]['LATENCY'] . ' DAY' :
+ 						"'" . (int) $gradebook_config[$staff_id]['LATENCY'] . " DAY'" ) . "))
+-					OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
++					OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
+ 
+ 				$sql .= " AND (gg.POINTS IS NOT NULL OR ga.DUE_DATE IS NULL OR ((ga.DUE_DATE>=ss.START_DATE AND (ss.END_DATE IS NULL OR ga.DUE_DATE<=ss.END_DATE)) AND (ga.DUE_DATE>=ssm.START_DATE AND (ssm.END_DATE IS NULL OR ga.DUE_DATE<=ssm.END_DATE))))" . ( $do_stats && $_REQUEST['do_stats'] ? '' : " AND s.STUDENT_ID='" . UserStudentID() . "'" );
+ 
+@@ -380,6 +383,7 @@ if ( UserStudentID()
+ 			}
+ 
+ 			//FJ assigments appear after assigned date and not due date
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$assignments_RET = DBGet( "SELECT ga.ASSIGNMENT_ID,gg.POINTS,gg.COMMENT,ga.TITLE,
+ 				ga.DESCRIPTION,ga.ASSIGNED_DATE,ga.DUE_DATE,ga.POINTS AS POINTS_POSSIBLE,ga.WEIGHT,
+ 				at.TITLE AS CATEGORY,at.COLOR AS ASSIGNMENT_TYPE_COLOR,ga.STAFF_ID,ga.FILE,
+@@ -390,11 +394,11 @@ if ( UserStudentID()
+ 			WHERE (ga.COURSE_PERIOD_ID='" . (int) $course['COURSE_PERIOD_ID'] . "' OR ga.COURSE_ID='" . (int) $course['COURSE_ID'] . "' AND ga.STAFF_ID='" . (int) $staff_id . "')
+ 			AND ga.MARKING_PERIOD_ID='" . UserMP() . "'
+ 			AND at.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID
+-			AND ((ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-				AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=(ga.DUE_DATE + INTERVAL " .
++			AND ((ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++				AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=(ga.DUE_DATE + INTERVAL " .
+ 				( $DatabaseType === 'mysql' ? (int) $gradebook_config[$staff_id]['LATENCY'] . ' DAY' :
+ 					"'" . (int) $gradebook_config[$staff_id]['LATENCY'] . " DAY'" ) . "))
+-				OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
++				OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
+ 				OR gg.POINTS IS NOT NULL)
+ 			AND (ga.POINTS!='0' OR gg.POINTS IS NOT NULL AND gg.POINTS>=0)
+ 			ORDER BY at.TITLE,ga.ASSIGNMENT_ID DESC", [ 'TITLE' => '_makeTipAssignment', 'CATEGORY' => '_makeCategory' ] );
+@@ -405,6 +409,7 @@ if ( UserStudentID()
+ 				if ( $do_stats && $_REQUEST['do_stats'] )
+ 				//FJ bugfix broken statistics, MIN calculation when gg.POINTS is NULL
+ 				{
++					// SIMDATE sim date instead of CURRENT_DATE.
+ 					$all_RET = DBGet( "SELECT ga.ASSIGNMENT_ID,
+ 					min(CASE WHEN gg.POINTS<0 THEN ga.POINTS ELSE
+ 						(CASE WHEN gg.POINTS IS NULL THEN 0 ELSE gg.POINTS END) END) AS MIN,
+@@ -425,10 +430,10 @@ if ( UserStudentID()
+ 					AND ga.MARKING_PERIOD_ID='" . UserMP() . "'
+ 					AND gg.ASSIGNMENT_ID=ga.ASSIGNMENT_ID
+ 					AND at.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID
+-					AND ((ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=(ga.DUE_DATE + INTERVAL " .
++					AND ((ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE) AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=(ga.DUE_DATE + INTERVAL " .
+ 						( $DatabaseType === 'mysql' ? (int) $gradebook_config[$staff_id]['LATENCY'] . ' DAY' :
+ 						"'" . (int) $gradebook_config[$staff_id]['LATENCY'] . " DAY'" ) . "))
+-						OR CURRENT_DATE>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
++						OR '" . DBDate() . "'>(SELECT END_DATE FROM school_marking_periods WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID)
+ 						OR g.POINTS IS NOT NULL)
+ 					AND ga.POINTS!='0'
+ 					GROUP BY ga.ASSIGNMENT_ID", [], [ 'ASSIGNMENT_ID' ] );
+diff --git a/modules/Grades/includes/FinalGrades.inc.php b/modules/Grades/includes/FinalGrades.inc.php
+index c4b44cc..30aa534 100644
+--- a/modules/Grades/includes/FinalGrades.inc.php
++++ b/modules/Grades/includes/FinalGrades.inc.php
+@@ -565,12 +565,13 @@ function FinalGradesGetAssignmentsPoints( $cp_id, $mp_id, $assignment_type_id =
+ 			AND gg.COURSE_PERIOD_ID=cp.COURSE_PERIOD_ID),gradebook_assignment_types gt";
+ 
+ 	// Check Current date.
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$extra['WHERE'] = " AND gt.ASSIGNMENT_TYPE_ID=ga.ASSIGNMENT_TYPE_ID
+ 		AND gt.COURSE_ID=cp.COURSE_ID
+ 		AND (gg.POINTS IS NOT NULL
+-			OR (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
+-			AND (ga.DUE_DATE IS NULL OR CURRENT_DATE>=ga.DUE_DATE)
+-			OR CURRENT_DATE>(SELECT END_DATE
++			OR (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
++			AND (ga.DUE_DATE IS NULL OR '" . DBDate() . "'>=ga.DUE_DATE)
++			OR '" . DBDate() . "'>(SELECT END_DATE
+ 				FROM school_marking_periods
+ 				WHERE MARKING_PERIOD_ID=ga.MARKING_PERIOD_ID))";
+ 
+diff --git a/modules/Grades/includes/StudentAssignments.fnc.php b/modules/Grades/includes/StudentAssignments.fnc.php
+index 4518650..e391941 100644
+--- a/modules/Grades/includes/StudentAssignments.fnc.php
++++ b/modules/Grades/includes/StudentAssignments.fnc.php
+@@ -463,13 +463,14 @@ function GetAssignment( $assignment_id )
+ 	}
+ 	elseif ( UserStudentID() )
+ 	{
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$where_user = ",schedule ss WHERE ss.STUDENT_ID='" . UserStudentID() . "'
+ 			AND ss.SYEAR='" . UserSyear() . "'
+ 			AND ss.SCHOOL_ID='" . UserSchool() . "'
+ 			AND ss.MARKING_PERIOD_ID IN (" . GetAllMP( 'QTR', UserMP() ) . ")
+ 			AND (ga.COURSE_PERIOD_ID IS NULL OR ss.COURSE_PERIOD_ID=ga.COURSE_PERIOD_ID)
+ 			AND (ga.COURSE_ID IS NULL OR ss.COURSE_ID=ga.COURSE_ID)
+-			AND (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
++			AND (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
+ 			AND ( ga.DUE_DATE IS NULL
+ 				OR ( ga.DUE_DATE>=ss.START_DATE
+ 					AND ( ss.END_DATE IS NULL OR ga.DUE_DATE<=ss.END_DATE ) ) )
+@@ -605,6 +606,7 @@ function UploadAssignmentTeacherFile( $assignment_id, $teacher_id, $file_input_i
+ function StudentAssignmentsListOutput()
+ {
+ 	// TODO: get Assignment type color!
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$assignments_sql = "SELECT ga.ASSIGNMENT_ID,ga.STAFF_ID,ga.COURSE_PERIOD_ID,ga.COURSE_ID,
+ 		ga.ASSIGNMENT_TYPE_ID,ga.TITLE,ga.ASSIGNED_DATE,ga.DUE_DATE,ga.POINTS,ga.SUBMISSION,
+ 		c.TITLE AS COURSE_TITLE,cp.SECONDARY_TEACHER_ID,
+@@ -623,7 +625,7 @@ function StudentAssignmentsListOutput()
+ 		AND ga.STAFF_ID=cp.TEACHER_ID
+ 		AND cp.COURSE_ID=c.COURSE_ID
+ 		AND cp.COURSE_PERIOD_ID=ss.COURSE_PERIOD_ID
+-		AND (ga.ASSIGNED_DATE IS NULL OR CURRENT_DATE>=ga.ASSIGNED_DATE)
++		AND (ga.ASSIGNED_DATE IS NULL OR '" . DBDate() . "'>=ga.ASSIGNED_DATE)
+ 		AND ( ga.DUE_DATE IS NULL
+ 			OR ( ga.DUE_DATE>=ss.START_DATE
+ 				AND ( ss.END_DATE IS NULL OR ga.DUE_DATE<=ss.END_DATE ) ) )
+diff --git a/modules/Scheduling/AddDrop.php b/modules/Scheduling/AddDrop.php
+index 059ecae..b9935f5 100644
+--- a/modules/Scheduling/AddDrop.php
++++ b/modules/Scheduling/AddDrop.php
+@@ -4,7 +4,8 @@ require_once 'ProgramFunctions/TipMessage.fnc.php';
+ DrawHeader( ProgramTitle() );
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Scheduling/Courses.php b/modules/Scheduling/Courses.php
+index dd55cdd..ff6118e 100644
+--- a/modules/Scheduling/Courses.php
++++ b/modules/Scheduling/Courses.php
+@@ -866,6 +866,7 @@ if (  ( ! $_REQUEST['modfunc']
+ 		}
+ 		elseif ( UserStudentID() )
+ 		{
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$subjects_sql .= " AND SUBJECT_ID IN(SELECT SUBJECT_ID
+ 				FROM courses
+ 				WHERE COURSE_ID IN(SELECT COURSE_ID
+@@ -873,8 +874,8 @@ if (  ( ! $_REQUEST['modfunc']
+ 					WHERE SYEAR='" . UserSyear() . "'
+ 					AND SCHOOL_ID='" . UserSchool() . "'
+ 					AND STUDENT_ID='" . UserStudentID() . "'
+-					AND START_DATE<=CURRENT_DATE
+-					AND (END_DATE IS NULL OR END_DATE>=CURRENT_DATE)))";
++					AND START_DATE<='" . DBDate() . "'
++					AND (END_DATE IS NULL OR END_DATE>='" . DBDate() . "')))";
+ 		}
+ 	}
+ 
+@@ -1690,13 +1691,14 @@ if (  ( ! $_REQUEST['modfunc']
+ 			}
+ 			elseif ( UserStudentID() )
+ 			{
++				// SIMDATE sim date instead of CURRENT_DATE.
+ 				$courses_sql .= " AND COURSE_ID IN(SELECT COURSE_ID
+ 					FROM schedule
+ 					WHERE SYEAR='" . UserSyear() . "'
+ 					AND SCHOOL_ID='" . UserSchool() . "'
+ 					AND STUDENT_ID='" . UserStudentID() . "'
+-					AND START_DATE<=CURRENT_DATE
+-					AND (END_DATE IS NULL OR END_DATE>=CURRENT_DATE))";
++					AND START_DATE<='" . DBDate() . "'
++					AND (END_DATE IS NULL OR END_DATE>='" . DBDate() . "'))";
+ 			}
+ 		}
+ 
+@@ -1793,13 +1795,14 @@ if (  ( ! $_REQUEST['modfunc']
+ 				}
+ 				elseif ( UserStudentID() )
+ 				{
++					// SIMDATE sim date instead of CURRENT_DATE.
+ 					$periods_sql .= " AND COURSE_PERIOD_ID IN(SELECT COURSE_PERIOD_ID
+ 						FROM schedule
+ 						WHERE SYEAR='" . UserSyear() . "'
+ 						AND SCHOOL_ID='" . UserSchool() . "'
+ 						AND STUDENT_ID='" . UserStudentID() . "'
+-						AND START_DATE<=CURRENT_DATE
+-						AND (END_DATE IS NULL OR END_DATE>=CURRENT_DATE))";
++						AND START_DATE<='" . DBDate() . "'
++						AND (END_DATE IS NULL OR END_DATE>='" . DBDate() . "'))";
+ 				}
+ 			}
+ 
+diff --git a/modules/Scheduling/includes/ClassSearchWidget.fnc.php b/modules/Scheduling/includes/ClassSearchWidget.fnc.php
+index a0388c2..3b51e32 100644
+--- a/modules/Scheduling/includes/ClassSearchWidget.fnc.php
++++ b/modules/Scheduling/includes/ClassSearchWidget.fnc.php
+@@ -207,13 +207,14 @@ function _classSearchWidgetCoursePeriodsListOutput( $extra = '' )
+ 	else
+ 	{
+ 		// FJ multiple school periods for a course period.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$sql = "SELECT cp.COURSE_PERIOD_ID,cp.TITLE
+ 		FROM course_periods cp,schedule ss
+ 		WHERE cp.SCHOOL_ID='" . UserSchool() . "'
+ 		AND cp.COURSE_PERIOD_ID=ss.COURSE_PERIOD_ID
+ 		AND ss.SYEAR='" . UserSyear() . "'
+ 		AND ss.STUDENT_ID='" . UserStudentID() . "'
+-		AND (CURRENT_DATE>=ss.START_DATE AND (ss.END_DATE IS NULL OR CURRENT_DATE<=ss.END_DATE)
++		AND ('" . DBDate() . "'>=ss.START_DATE AND (ss.END_DATE IS NULL OR '" . DBDate() . "'<=ss.END_DATE)
+ 		AND ss.MARKING_PERIOD_ID IN (" . GetAllMP( 'QTR', UserMP() ) . "))";
+ 	}
+ 
+diff --git a/modules/Scheduling/includes/ScheduleReport.php b/modules/Scheduling/includes/ScheduleReport.php
+index c5508a6..a38463f 100644
+--- a/modules/Scheduling/includes/ScheduleReport.php
++++ b/modules/Scheduling/includes/ScheduleReport.php
+@@ -466,6 +466,7 @@ function calcSeats1( $period, &$total_seats, &$filled_seats )
+ 			continue;
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$seats = DBGet( "SELECT max((SELECT count(1)
+ 			FROM schedule ss
+ 			JOIN student_enrollment sem ON (sem.STUDENT_ID=ss.STUDENT_ID AND sem.SYEAR=ss.SYEAR)
+@@ -477,10 +478,10 @@ function calcSeats1( $period, &$total_seats, &$filled_seats )
+ 		FROM attendance_calendar ac
+ 		WHERE ac.CALENDAR_ID='" . (int) $period['CALENDAR_ID'] . "'
+ 		AND ac.SCHOOL_DATE BETWEEN " . db_case( [
+-			"(CURRENT_DATE>'" . GetMP( $mp, 'END_DATE' ) . "')",
++			"(CAST('" . DBDate() . "' AS DATE)>'" . GetMP( $mp, 'END_DATE' ) . "')",
+ 			'TRUE',
+ 			"'" . GetMP( $mp, 'START_DATE' ) . "'",
+-			'CURRENT_DATE',
++			"CAST('" . DBDate() . "' AS DATE)",
+ 		] ) . " AND '" . GetMP( $mp, 'END_DATE' ) . "'" );
+ 
+ 		if ( $_REQUEST['include_child_mps'] )
+diff --git a/modules/Scheduling/includes/calcSeats0.fnc.php b/modules/Scheduling/includes/calcSeats0.fnc.php
+index 2e5d633..45c662b 100644
+--- a/modules/Scheduling/includes/calcSeats0.fnc.php
++++ b/modules/Scheduling/includes/calcSeats0.fnc.php
+@@ -22,6 +22,7 @@ function calcSeats0( $period, $date = '' )
+ 		return '0';
+ 	}
+ 
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$filled_seats = DBGetOne( "SELECT
+ 		max((SELECT count(1)
+ 		FROM schedule ss JOIN student_enrollment sem ON (sem.STUDENT_ID=ss.STUDENT_ID AND sem.SYEAR=ss.SYEAR)
+@@ -34,10 +35,10 @@ function calcSeats0( $period, $date = '' )
+ 	AND ac.SCHOOL_DATE BETWEEN " . ( $date ?
+ 		"'" . $date . "'" :
+ 		db_case( [
+-			"(CURRENT_DATE>'" . GetMP( $mp, 'END_DATE' ) . "')",
++			"(CAST('" . DBDate() . "' AS DATE)>'" . GetMP( $mp, 'END_DATE' ) . "')",
+ 			'TRUE',
+ 			"'" . GetMP( $mp, 'START_DATE' ) . "'",
+-			'CURRENT_DATE',
++			"CAST('" . DBDate() . "' AS DATE)",
+ 		] )
+ 	) . " AND '" . GetMP( $mp, 'END_DATE' ) . "'" );
+ 
+diff --git a/modules/School_Setup/AccessLog.php b/modules/School_Setup/AccessLog.php
+index c3b2cd5..8628a51 100644
+--- a/modules/School_Setup/AccessLog.php
++++ b/modules/School_Setup/AccessLog.php
+@@ -20,7 +20,8 @@ DrawHeader( ProgramTitle() );
+ $start_date = RequestedDate( 'start', date( 'Y-m-d', time() - 60 * 60 * 24 ) );
+ 
+ // Set end date.
+-$end_date = RequestedDate( 'end', DBDate() );
++// SIMDATE real date: compared with real timestamps, not a school day.
++$end_date = RequestedDate( 'end', date( 'Y-m-d' ) );
+ 
+ 
+ if ( $_REQUEST['modfunc'] === 'delete' )
+diff --git a/modules/School_Setup/Calendar.php b/modules/School_Setup/Calendar.php
+index 0c1c197..a8c9404 100644
+--- a/modules/School_Setup/Calendar.php
++++ b/modules/School_Setup/Calendar.php
+@@ -10,7 +10,8 @@ if ( ! isset( $_REQUEST['month'] )
+ 	|| mb_strlen( $_REQUEST['month'] ) !== 2
+ 	|| (string) (int) $_REQUEST['month'] != $_REQUEST['month'] )
+ {
+-	$_REQUEST['month'] = date( 'm' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['month'] = mb_substr( DBDate(), 5, 2 );
+ }
+ 
+ // Set Year.
+@@ -18,7 +19,8 @@ if ( ! isset( $_REQUEST['year'] )
+ 	|| mb_strlen( $_REQUEST['year'] ) !== 4
+ 	|| (string) (int) $_REQUEST['year'] != $_REQUEST['year'] )
+ {
+-	$_REQUEST['year'] = date( 'Y' );
++	// SIMDATE sim date instead of the server clock.
++	$_REQUEST['year'] = mb_substr( DBDate(), 0, 4 );
+ }
+ 
+ if ( isset( $_REQUEST['calendar_id'] ) )
+@@ -781,7 +783,8 @@ if ( $_REQUEST['modfunc'] === 'list_events' )
+ 
+ 	if ( ! VerifyDate( $start_date_default ) )
+ 	{
+-		$start_date_default = date( 'Y-m-01' );
++		// SIMDATE sim date instead of the server clock.
++		$start_date_default = mb_substr( DBDate(), 0, 7 ) . '-01';
+ 	}
+ 
+ 	$start_date = RequestedDate( 'start', $start_date_default );
+@@ -1119,6 +1122,7 @@ if ( ! $_REQUEST['modfunc'] )
+ 	if ( User( 'PROFILE' ) === 'parent'
+ 		|| User( 'PROFILE' ) === 'student' )
+ 	{
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$assignments_SQL = "SELECT ASSIGNMENT_ID AS ID,a.DUE_DATE AS SCHOOL_DATE,a.TITLE,'Y' AS ASSIGNED
+ 			FROM gradebook_assignments a,schedule s
+ 			WHERE (a.COURSE_PERIOD_ID=s.COURSE_PERIOD_ID OR a.COURSE_ID=s.COURSE_ID)
+@@ -1126,13 +1130,14 @@ if ( ! $_REQUEST['modfunc'] )
+ 			AND s.SYEAR='" . UserSyear() . "'
+ 			AND s.SCHOOL_ID='" . UserSchool() . "'
+ 			AND (a.DUE_DATE BETWEEN s.START_DATE AND s.END_DATE OR s.END_DATE IS NULL)
+-			AND (a.ASSIGNED_DATE<=CURRENT_DATE OR a.ASSIGNED_DATE IS NULL)
++			AND (a.ASSIGNED_DATE<='" . DBDate() . "' OR a.ASSIGNED_DATE IS NULL)
+ 			AND a.DUE_DATE BETWEEN '" . $first_day_month . "' AND '" . $last_day_month . "'";
+ 	}
+ 	elseif ( User( 'PROFILE' ) === 'teacher' )
+ 	{
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$assignments_SQL = "SELECT ASSIGNMENT_ID AS ID,a.DUE_DATE AS SCHOOL_DATE,a.TITLE,
+-				CASE WHEN a.ASSIGNED_DATE<=CURRENT_DATE OR a.ASSIGNED_DATE IS NULL THEN 'Y' ELSE NULL END AS ASSIGNED
++				CASE WHEN a.ASSIGNED_DATE<='" . DBDate() . "' OR a.ASSIGNED_DATE IS NULL THEN 'Y' ELSE NULL END AS ASSIGNED
+ 			FROM gradebook_assignments a
+ 			WHERE a.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 			AND a.DUE_DATE BETWEEN '" . $first_day_month . "' AND '" . $last_day_month . "'";
+diff --git a/modules/School_Setup/PortalNotes.php b/modules/School_Setup/PortalNotes.php
+index a8f4d64..10ddd9b 100644
+--- a/modules/School_Setup/PortalNotes.php
++++ b/modules/School_Setup/PortalNotes.php
+@@ -156,8 +156,9 @@ echo ErrorMessage( $error );
+ if ( ! $_REQUEST['modfunc'] )
+ {
+ 	// File attached to portal notes.
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$notes_RET = DBGet( "SELECT ID,SORT_ORDER,TITLE,CONTENT,START_DATE,END_DATE,PUBLISHED_PROFILES,FILE_ATTACHED,
+-		CASE WHEN END_DATE IS NOT NULL AND END_DATE<CURRENT_DATE THEN 'Y' ELSE NULL END AS EXPIRED
++		CASE WHEN END_DATE IS NOT NULL AND END_DATE<'" . DBDate() . "' THEN 'Y' ELSE NULL END AS EXPIRED
+ 	FROM portal_notes
+ 	WHERE SCHOOL_ID='" . UserSchool() . "'
+ 	AND SYEAR='" . UserSyear() . "'
+diff --git a/modules/School_Setup/PortalPolls.php b/modules/School_Setup/PortalPolls.php
+index ca23b39..b1376d8 100644
+--- a/modules/School_Setup/PortalPolls.php
++++ b/modules/School_Setup/PortalPolls.php
+@@ -197,10 +197,11 @@ if ( ! $_REQUEST['modfunc'] )
+ 		AND pp.ID=ppq.PORTAL_POLL_ID
+ 		ORDER BY ppq.ID", [ 'OPTIONS' => '_makeOptionsInput' ] );
+ 
++	// SIMDATE sim date instead of CURRENT_DATE.
+ 	$polls_RET = DBGet(
+ 		"SELECT pp.ID,pp.SORT_ORDER,pp.TITLE,'See_portal_poll_questions' AS OPTIONS,
+ 			pp.VOTES_NUMBER,pp.START_DATE,pp.END_DATE,pp.PUBLISHED_PROFILES,pp.STUDENTS_TEACHER_ID,
+-			CASE WHEN pp.END_DATE IS NOT NULL AND pp.END_DATE<CURRENT_DATE THEN 'Y' ELSE NULL END AS EXPIRED
++			CASE WHEN pp.END_DATE IS NOT NULL AND pp.END_DATE<'" . DBDate() . "' THEN 'Y' ELSE NULL END AS EXPIRED
+ 			FROM portal_polls pp
+ 			WHERE pp.SCHOOL_ID='" . UserSchool() . "'
+ 			AND pp.SYEAR='" . UserSyear() . "'
+diff --git a/modules/School_Setup/includes/Dashboard.inc.php b/modules/School_Setup/includes/Dashboard.inc.php
+index 4b3d980..3611644 100644
+--- a/modules/School_Setup/includes/Dashboard.inc.php
++++ b/modules/School_Setup/includes/Dashboard.inc.php
+@@ -48,6 +48,7 @@ if ( ! function_exists( 'DashboardSchoolSetupAdmin' ) )
+ 	{
+ 		$start_date = date( 'Y-m-d', time() - 60 * 60 * 24 );
+ 
++		// SIMDATE real date: compared with real timestamps, not a school day.
+ 		$access_log_RET = DBGet( "SELECT
+ 		COUNT(USERNAME) AS LOGIN_RECORDS,
+ 		SUM(CASE WHEN PROFILE='admin' THEN 1 END) AS LOGIN_ADMIN,
+@@ -57,7 +58,7 @@ if ( ! function_exists( 'DashboardSchoolSetupAdmin' ) )
+ 		SUM(CASE WHEN STATUS IS NULL OR STATUS='B' THEN 1 END) AS LOGIN_FAIL
+ 		FROM access_log
+ 		WHERE CREATED_AT >='" . $start_date . "'
+-		AND CREATED_AT <='" . DBDate() . ' 23:59:59' . "'" );
++		AND CREATED_AT <='" . date( 'Y-m-d' ) . ' 23:59:59' . "'" );
+ 
+ 		$login_records = (int) $access_log_RET[1]['LOGIN_RECORDS'];
+ 
+diff --git a/modules/Student_Billing/includes/DailyTotals.php b/modules/Student_Billing/includes/DailyTotals.php
+index 3993edf..c6f2b7f 100644
+--- a/modules/Student_Billing/includes/DailyTotals.php
++++ b/modules/Student_Billing/includes/DailyTotals.php
+@@ -7,7 +7,8 @@
+  */
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Student_Billing/includes/DailyTransactions.php b/modules/Student_Billing/includes/DailyTransactions.php
+index 4af304b..8dc7403 100644
+--- a/modules/Student_Billing/includes/DailyTransactions.php
++++ b/modules/Student_Billing/includes/DailyTransactions.php
+@@ -7,7 +7,8 @@
+  */
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Student_Billing/includes/Dashboard.inc.php b/modules/Student_Billing/includes/Dashboard.inc.php
+index 2e9017c..bb0c993 100644
+--- a/modules/Student_Billing/includes/Dashboard.inc.php
++++ b/modules/Student_Billing/includes/Dashboard.inc.php
+@@ -75,9 +75,11 @@ if ( ! function_exists( 'DashboardStudentBillingAdmin' ) )
+ 
+ 		krsort( $fees_payments_RET );
+ 
+-		if ( ! empty( $fees_payments_RET[date( 'Y-m' )] ) )
++		// SIMDATE sim date instead of the server clock.
++		if ( ! empty( $fees_payments_RET[mb_substr( DBDate(), 0, 7 )] ) )
+ 		{
+-			$fees_payments_month = $fees_payments_RET[date( 'Y-m' )][1];
++			// SIMDATE sim date instead of the server clock.
++			$fees_payments_month = $fees_payments_RET[mb_substr( DBDate(), 0, 7 )][1];
+ 
+ 			// Student Billing Balance.
+ 
+diff --git a/modules/Students/Student.php b/modules/Students/Student.php
+index 4998e35..ea191e9 100644
+--- a/modules/Students/Student.php
++++ b/modules/Students/Student.php
+@@ -270,13 +270,14 @@ if ( $_REQUEST['modfunc'] === 'update'
+ 						|| $old_enrollment_RET[1]['START_DATE'] > DBDate() ) )
+ 				{
+ 					// Student was Inactive and is enrolled as of today, in Default School Year: Account Activation.
++					// SIMDATE sim date instead of CURRENT_DATE.
+ 					$student_account_activated = DBGetOne( "SELECT 1
+ 						FROM student_enrollment
+ 						WHERE STUDENT_ID='" . UserStudentID() . "'
+ 						AND SYEAR='" . Config( 'SYEAR' ) . "'
+ 						AND START_DATE IS NOT NULL
+-						AND CURRENT_DATE>=START_DATE
+-						AND (CURRENT_DATE<=END_DATE OR END_DATE IS NULL)" );
++						AND '" . DBDate() . "'>=START_DATE
++						AND ('" . DBDate() . "'<=END_DATE OR END_DATE IS NULL)" );
+ 				}
+ 			}
+ 
+diff --git a/modules/Students/includes/AddDrop.php b/modules/Students/includes/AddDrop.php
+index 209f3c5..4409978 100644
+--- a/modules/Students/includes/AddDrop.php
++++ b/modules/Students/includes/AddDrop.php
+@@ -9,7 +9,8 @@
+ require_once 'ProgramFunctions/TipMessage.fnc.php';
+ 
+ // Set start date.
+-$start_date = RequestedDate( 'start', date( 'Y-m' ) . '-01' );
++// SIMDATE sim date instead of the server clock.
++$start_date = RequestedDate( 'start', mb_substr( DBDate(), 0, 7 ) . '-01' );
+ 
+ // Set end date.
+ $end_date = RequestedDate( 'end', DBDate() );
+diff --git a/modules/Students/includes/AddDropBreakdownTime.php b/modules/Students/includes/AddDropBreakdownTime.php
+index d1cfbb7..06f9424 100644
+--- a/modules/Students/includes/AddDropBreakdownTime.php
++++ b/modules/Students/includes/AddDropBreakdownTime.php
+@@ -24,7 +24,8 @@ $min_date = DBGetOne( "SELECT min(SCHOOL_DATE) AS MIN_DATE
+ 
+ if ( ! $min_date )
+ {
+-	$min_date = date( 'Y-m' ) . '-01';
++	// SIMDATE sim date instead of the server clock.
++	$min_date = mb_substr( DBDate(), 0, 7 ) . '-01';
+ }
+ 
+ // Set start date.
+diff --git a/modules/Students/includes/Dashboard.inc.php b/modules/Students/includes/Dashboard.inc.php
+index dbed354..4832295 100644
+--- a/modules/Students/includes/Dashboard.inc.php
++++ b/modules/Students/includes/Dashboard.inc.php
+@@ -43,14 +43,15 @@ if ( ! function_exists( 'DashboardStudentsAdmin' ) )
+ 	{
+ 		$students_nb = 0;
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$students_RET = DBGet( "SELECT
+ 		sgl.SHORT_NAME AS GRADELEVEL,
+ 		SUM(CASE WHEN se.GRADE_ID=sgl.ID THEN 1 END) AS STUDENTS_NB
+ 		FROM student_enrollment se, school_gradelevels sgl
+ 		WHERE se.SYEAR='" . UserSyear() . "'
+ 		AND se.SCHOOL_ID='" . UserSchool() . "'
+-		AND (CURRENT_DATE>=se.START_DATE
+-			AND (se.END_DATE IS NULL OR CURRENT_DATE<=se.END_DATE))
++		AND ('" . DBDate() . "'>=se.START_DATE
++			AND (se.END_DATE IS NULL OR '" . DBDate() . "'<=se.END_DATE))
+ 		AND sgl.SCHOOL_ID='" . UserSchool() . "'
+ 		AND se.GRADE_ID=sgl.ID
+ 		GROUP BY sgl.SHORT_NAME,sgl.SORT_ORDER
+@@ -77,8 +78,9 @@ if ( ! function_exists( 'DashboardStudentsAdmin' ) )
+ 
+ 		$data += $students_gradelevel_data;
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$inactive_students = DBGetOne( "SELECT
+-		SUM(CASE WHEN CURRENT_DATE<START_DATE OR CURRENT_DATE>END_DATE THEN 1 END) AS STUDENTS_NB
++		SUM(CASE WHEN '" . DBDate() . "'<START_DATE OR '" . DBDate() . "'>END_DATE THEN 1 END) AS STUDENTS_NB
+ 		FROM student_enrollment
+ 		WHERE SYEAR='" . UserSyear() . "'
+ 		AND SCHOOL_ID='" . UserSchool() . "'
+diff --git a/modules/misc/Portal.php b/modules/misc/Portal.php
+index a635d07..a0cdd10 100644
+--- a/modules/misc/Portal.php
++++ b/modules/misc/Portal.php
+@@ -190,11 +190,12 @@ switch ( User( 'PROFILE' ) )
+ 
+ 		// FJ fix bug Portal Notes not displayed when pn.START_DATE IS NULL.
+ 		//        $notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pn.TITLE, '</b>') AS TITLE,pn.CONTENT FROM portal_notes pn,schools s,staff st WHERE pn.SYEAR='" . UserSyear() . "' AND pn.START_DATE<=CURRENT_DATE AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL) AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0) AND (st.PROFILE_ID IS NULL AND position(',admin,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pn.PUBLISHED_PROFILES)>0) AND s.ID=pn.SCHOOL_ID AND s.SYEAR=pn.SYEAR ORDER BY pn.SORT_ORDER IS NULL,pn.SORT_ORDER,pn.CREATED_AT DESC",array('CREATED_AT' => 'ProperDate','CONTENT' => '_formatContent'));
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pn.TITLE, '</b>') AS TITLE,pn.CONTENT,pn.FILE_ATTACHED,pn.ID
+ 		FROM portal_notes pn,schools s,staff st
+ 		WHERE pn.SYEAR='" . UserSyear() . "'
+-		AND (pn.START_DATE<=CURRENT_DATE OR pn.START_DATE IS NULL)
+-		AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL)
++		AND (pn.START_DATE<='" . DBDate() . "' OR pn.START_DATE IS NULL)
++		AND (pn.END_DATE>='" . DBDate() . "' OR pn.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',admin,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pn.PUBLISHED_PROFILES)>0)
+@@ -221,11 +222,12 @@ switch ( User( 'PROFILE' ) )
+ 		}
+ 
+ 		//FJ Portal Polls
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$polls_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pp.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pp.TITLE, '</b>') AS TITLE,'options' AS OPTIONS,pp.ID
+ 		FROM portal_polls pp,schools s,staff st
+ 		WHERE pp.SYEAR='" . UserSyear() . "'
+-		AND (pp.START_DATE<=CURRENT_DATE OR pp.START_DATE IS NULL)
+-		AND (pp.END_DATE>=CURRENT_DATE OR pp.END_DATE IS NULL)
++		AND (pp.START_DATE<='" . DBDate() . "' OR pp.START_DATE IS NULL)
++		AND (pp.END_DATE>='" . DBDate() . "' OR pp.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pp.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',admin,' IN pp.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pp.PUBLISHED_PROFILES)>0)
+@@ -245,10 +247,11 @@ switch ( User( 'PROFILE' ) )
+ 			);
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$events_RET = DBGet( "SELECT ce.ID,ce.TITLE,ce.DESCRIPTION,ce.SCHOOL_DATE AS SCHOOL_DATE,ce.SCHOOL_DATE AS DAY,s.TITLE AS SCHOOL
+ 		FROM calendar_events ce,schools s,staff st
+-		WHERE ce.SCHOOL_DATE BETWEEN CURRENT_DATE
+-		AND (CURRENT_DATE + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
++		WHERE ce.SCHOOL_DATE BETWEEN CAST('" . DBDate() . "' AS DATE)
++		AND (CAST('" . DBDate() . "' AS DATE) + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
+ 		AND ce.SYEAR='" . UserSyear() . "'
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', ce.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+@@ -464,11 +467,12 @@ switch ( User( 'PROFILE' ) )
+ 		require_once 'ProgramFunctions/PortalPollsNotes.fnc.php';
+ 		//FJ fix bug Portal Notes not displayed when pn.START_DATE IS NULL
+ 		//        $notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pn.TITLE, '</b>') AS TITLE,pn.CONTENT FROM portal_notes pn,schools s,staff st WHERE pn.SYEAR='" . UserSyear() . "' AND pn.START_DATE<=CURRENT_DATE AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL) AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0) AND (st.PROFILE_ID IS NULL AND position(',teacher,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pn.PUBLISHED_PROFILES)>0) AND s.ID=pn.SCHOOL_ID AND s.SYEAR=pn.SYEAR ORDER BY pn.SORT_ORDER IS NULL,pn.SORT_ORDER,pn.CREATED_AT DESC",array('CREATED_AT' => 'ProperDate','CONTENT' => '_formatContent'));
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pn.TITLE, '</b>') AS TITLE,pn.CONTENT,pn.FILE_ATTACHED,pn.ID
+ 		FROM portal_notes pn,schools s,staff st
+ 		WHERE pn.SYEAR='" . UserSyear() . "'
+-		AND (pn.START_DATE<=CURRENT_DATE OR pn.START_DATE IS NULL)
+-		AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL)
++		AND (pn.START_DATE<='" . DBDate() . "' OR pn.START_DATE IS NULL)
++		AND (pn.END_DATE>='" . DBDate() . "' OR pn.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',teacher,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL
+@@ -491,11 +495,12 @@ switch ( User( 'PROFILE' ) )
+ 		}
+ 
+ 		// FJ Portal Polls.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$polls_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pp.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pp.TITLE, '</b>') AS TITLE,'options' AS OPTIONS,pp.ID
+ 		FROM portal_polls pp,schools s,staff st
+ 		WHERE pp.SYEAR='" . UserSyear() . "'
+-		AND (pp.START_DATE<=CURRENT_DATE OR pp.START_DATE IS NULL)
+-		AND (pp.END_DATE>=CURRENT_DATE OR pp.END_DATE IS NULL)
++		AND (pp.START_DATE<='" . DBDate() . "' OR pp.START_DATE IS NULL)
++		AND (pp.END_DATE>='" . DBDate() . "' OR pp.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pp.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',teacher,' IN pp.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL
+@@ -517,10 +522,11 @@ switch ( User( 'PROFILE' ) )
+ 			);
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$events_RET = DBGet( "SELECT ce.ID,ce.TITLE,ce.DESCRIPTION,ce.SCHOOL_DATE,ce.SCHOOL_DATE AS DAY,s.TITLE AS SCHOOL
+ 		FROM calendar_events ce,schools s
+-		WHERE ce.SCHOOL_DATE BETWEEN CURRENT_DATE
+-		AND (CURRENT_DATE + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
++		WHERE ce.SCHOOL_DATE BETWEEN CAST('" . DBDate() . "' AS DATE)
++		AND (CAST('" . DBDate() . "' AS DATE) + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
+ 		AND ce.SYEAR='" . UserSyear() . "'
+ 		AND position(CONCAT(',', ce.SCHOOL_ID, ',') IN (SELECT SCHOOLS FROM staff WHERE STAFF_ID='" . User( 'STAFF_ID' ) . "'))>0
+ 		AND s.ID=ce.SCHOOL_ID
+@@ -547,6 +553,7 @@ switch ( User( 'PROFILE' ) )
+ 		require_once 'modules/Grades/includes/StudentAssignments.fnc.php';
+ 
+ 		// FJ Portal Assignments.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$assignments_RET = DBGet( "SELECT a.ASSIGNMENT_ID,a.TITLE AS ASSIGNMENT_TITLE,
+ 			a.DUE_DATE,a.DUE_DATE AS DAY,a.ASSIGNED_DATE,a.DESCRIPTION,a.STAFF_ID,
+ 			c.TITLE AS COURSE,a.MARKING_PERIOD_ID,
+@@ -558,8 +565,8 @@ switch ( User( 'PROFILE' ) )
+ 		WHERE (a.COURSE_ID=c.COURSE_ID
+ 		OR c.COURSE_ID=(SELECT cp.COURSE_ID FROM course_periods cp WHERE cp.COURSE_PERIOD_ID=a.COURSE_PERIOD_ID))
+ 		AND a.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+-		AND (a.ASSIGNED_DATE<=CURRENT_DATE OR a.ASSIGNED_DATE IS NULL)
+-		AND a.DUE_DATE>=CURRENT_DATE
++		AND (a.ASSIGNED_DATE<='" . DBDate() . "' OR a.ASSIGNED_DATE IS NULL)
++		AND a.DUE_DATE>='" . DBDate() . "'
+ 		AND mp.MARKING_PERIOD_ID=a.MARKING_PERIOD_ID
+ 		AND mp.SYEAR='" . UserSyear() . "'
+ 		ORDER BY a.DUE_DATE,a.TITLE",
+@@ -737,13 +744,14 @@ switch ( User( 'PROFILE' ) )
+ 		require_once 'ProgramFunctions/PortalPollsNotes.fnc.php';
+ 		// FJ fix bug Portal Notes not displayed when pn.START_DATE IS NULL.
+ 		//        $notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,pn.TITLE,pn.CONTENT FROM portal_notes pn,schools s,staff st WHERE pn.SYEAR='" . UserSyear() . "' AND pn.START_DATE<=CURRENT_DATE AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL) AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND pn.SCHOOL_ID IN (SELECT DISTINCT SCHOOL_ID FROM students_join_users sju, student_enrollment se WHERE sju.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND se.SYEAR=pn.SYEAR AND se.STUDENT_ID=sju.STUDENT_ID AND se.START_DATE<=CURRENT_DATE AND (se.END_DATE>=CURRENT_DATE OR se.END_DATE IS NULL)) AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0) AND (st.PROFILE_ID IS NULL AND position(',parent,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pn.PUBLISHED_PROFILES)>0) AND s.ID=pn.SCHOOL_ID AND s.SYEAR=pn.SYEAR ORDER BY pn.SORT_ORDER IS NULL,pn.SORT_ORDER,pn.CREATED_AT DESC",array('CREATED_AT' => 'ProperDate','CONTENT' => '_formatContent'));
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,pn.TITLE,pn.CONTENT,pn.FILE_ATTACHED,pn.ID
+ 		FROM portal_notes pn,schools s,staff st
+ 		WHERE pn.SYEAR='" . UserSyear() . "'
+-		AND (pn.START_DATE<=CURRENT_DATE OR pn.START_DATE IS NULL)
+-		AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL)
++		AND (pn.START_DATE<='" . DBDate() . "' OR pn.START_DATE IS NULL)
++		AND (pn.END_DATE>='" . DBDate() . "' OR pn.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+-		AND pn.SCHOOL_ID IN (SELECT DISTINCT SCHOOL_ID FROM students_join_users sju, student_enrollment se WHERE sju.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND se.SYEAR=pn.SYEAR AND se.STUDENT_ID=sju.STUDENT_ID AND se.START_DATE<=CURRENT_DATE AND (se.END_DATE>=CURRENT_DATE OR se.END_DATE IS NULL))
++		AND pn.SCHOOL_ID IN (SELECT DISTINCT SCHOOL_ID FROM students_join_users sju, student_enrollment se WHERE sju.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND se.SYEAR=pn.SYEAR AND se.STUDENT_ID=sju.STUDENT_ID AND se.START_DATE<='" . DBDate() . "' AND (se.END_DATE>='" . DBDate() . "' OR se.END_DATE IS NULL))
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pn.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',parent,' IN pn.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL AND position(CONCAT(',', st.PROFILE_ID, ',') IN pn.PUBLISHED_PROFILES)>0)
+ 		AND s.ID=pn.SCHOOL_ID
+@@ -764,11 +772,12 @@ switch ( User( 'PROFILE' ) )
+ 		}
+ 
+ 		// FJ Portal Polls.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$polls_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pp.CREATED_AT) AS CREATED_AT,CONCAT('<b>', pp.TITLE, '</b>') AS TITLE,'options' AS OPTIONS,pp.ID
+ 		FROM portal_polls pp,schools s,staff st
+ 		WHERE pp.SYEAR='" . UserSyear() . "'
+-		AND (pp.START_DATE<=CURRENT_DATE OR pp.START_DATE IS NULL)
+-		AND (pp.END_DATE>=CURRENT_DATE OR pp.END_DATE IS NULL)
++		AND (pp.START_DATE<='" . DBDate() . "' OR pp.START_DATE IS NULL)
++		AND (pp.END_DATE>='" . DBDate() . "' OR pp.END_DATE IS NULL)
+ 		AND st.STAFF_ID='" . User( 'STAFF_ID' ) . "'
+ 		AND (st.SCHOOLS IS NULL OR position(CONCAT(',', pp.SCHOOL_ID, ',') IN st.SCHOOLS)>0)
+ 		AND (st.PROFILE_ID IS NULL AND position(',parent,' IN pp.PUBLISHED_PROFILES)>0 OR st.PROFILE_ID IS NOT NULL
+@@ -790,12 +799,13 @@ switch ( User( 'PROFILE' ) )
+ 			);
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$events_RET = DBGet( "SELECT ce.ID,ce.TITLE,ce.SCHOOL_DATE,ce.SCHOOL_DATE AS DAY,ce.DESCRIPTION,s.TITLE AS SCHOOL
+ 		FROM calendar_events ce,schools s
+-		WHERE ce.SCHOOL_DATE BETWEEN CURRENT_DATE
+-		AND (CURRENT_DATE + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
++		WHERE ce.SCHOOL_DATE BETWEEN CAST('" . DBDate() . "' AS DATE)
++		AND (CAST('" . DBDate() . "' AS DATE) + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
+ 		AND ce.SYEAR='" . UserSyear() . "'
+-		AND ce.SCHOOL_ID IN (SELECT DISTINCT SCHOOL_ID FROM students_join_users sju, student_enrollment se WHERE sju.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND se.SYEAR=ce.SYEAR AND se.STUDENT_ID=sju.STUDENT_ID AND se.START_DATE<=CURRENT_DATE AND (se.END_DATE>=CURRENT_DATE OR se.END_DATE IS NULL))
++		AND ce.SCHOOL_ID IN (SELECT DISTINCT SCHOOL_ID FROM students_join_users sju, student_enrollment se WHERE sju.STAFF_ID='" . User( 'STAFF_ID' ) . "' AND se.SYEAR=ce.SYEAR AND se.STUDENT_ID=sju.STUDENT_ID AND se.START_DATE<='" . DBDate() . "' AND (se.END_DATE>='" . DBDate() . "' OR se.END_DATE IS NULL))
+ 		AND s.ID=ce.SCHOOL_ID
+ 		AND s.SYEAR=ce.SYEAR
+ 		ORDER BY ce.SCHOOL_DATE,s.TITLE", [
+@@ -824,6 +834,7 @@ switch ( User( 'PROFILE' ) )
+ 		{
+ 			require_once 'modules/Grades/includes/StudentAssignments.fnc.php';
+ 
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$assignments_RET = DBGet( "SELECT a.ASSIGNMENT_ID,a.TITLE AS ASSIGNMENT_TITLE,
+ 				a.DUE_DATE,a.DUE_DATE AS DAY,a.ASSIGNED_DATE,a.DESCRIPTION,a.STAFF_ID,
+ 				c.TITLE AS COURSE,a.SUBMISSION,a.MARKING_PERIOD_ID,
+@@ -836,10 +847,10 @@ switch ( User( 'PROFILE' ) )
+ 			OR c.COURSE_ID=(SELECT cp.COURSE_ID FROM course_periods cp WHERE cp.COURSE_PERIOD_ID=a.COURSE_PERIOD_ID))
+ 			AND (a.COURSE_PERIOD_ID=s.COURSE_PERIOD_ID OR a.COURSE_ID=s.COURSE_ID)
+ 			AND s.STUDENT_ID='" . UserStudentID() . "'
+-			AND (s.END_DATE IS NULL OR s.END_DATE>=CURRENT_DATE)
+-			AND s.START_DATE<=CURRENT_DATE
+-			AND (a.ASSIGNED_DATE<=CURRENT_DATE OR a.ASSIGNED_DATE IS NULL)
+-			AND a.DUE_DATE>=CURRENT_DATE
++			AND (s.END_DATE IS NULL OR s.END_DATE>='" . DBDate() . "')
++			AND s.START_DATE<='" . DBDate() . "'
++			AND (a.ASSIGNED_DATE<='" . DBDate() . "' OR a.ASSIGNED_DATE IS NULL)
++			AND a.DUE_DATE>='" . DBDate() . "'
+ 			AND mp.MARKING_PERIOD_ID=a.MARKING_PERIOD_ID
+ 			AND mp.SYEAR='" . UserSyear() . "'
+ 			ORDER BY a.DUE_DATE,a.TITLE",
+@@ -927,11 +938,12 @@ switch ( User( 'PROFILE' ) )
+ 		require_once 'ProgramFunctions/PortalPollsNotes.fnc.php';
+ 		// FJ fix bug Portal Notes not displayed when pn.START_DATE IS NULL.
+ 		//        $notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,pn.TITLE,pn.CONTENT FROM portal_notes pn,schools s WHERE pn.SYEAR='" . UserSyear() . "' AND pn.START_DATE<=CURRENT_DATE AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL) AND pn.SCHOOL_ID='".UserSchool()."' AND  position(',0,' IN pn.PUBLISHED_PROFILES)>0 AND s.ID=pn.SCHOOL_ID AND s.SYEAR=pn.SYEAR ORDER BY pn.SORT_ORDER IS NULL,pn.SORT_ORDER,pn.CREATED_AT DESC",array('CREATED_AT' => 'ProperDate','CONTENT' => '_formatContent'));
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$notes_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pn.CREATED_AT) AS CREATED_AT,pn.TITLE,pn.CONTENT,pn.FILE_ATTACHED,pn.ID
+ 		FROM portal_notes pn,schools s
+ 		WHERE pn.SYEAR='" . UserSyear() . "'
+-		AND (pn.START_DATE<=CURRENT_DATE OR pn.START_DATE IS NULL)
+-		AND (pn.END_DATE>=CURRENT_DATE OR pn.END_DATE IS NULL)
++		AND (pn.START_DATE<='" . DBDate() . "' OR pn.START_DATE IS NULL)
++		AND (pn.END_DATE>='" . DBDate() . "' OR pn.END_DATE IS NULL)
+ 		AND pn.SCHOOL_ID='" . UserSchool() . "'
+ 		AND position(',0,' IN pn.PUBLISHED_PROFILES)>0
+ 		AND s.ID=pn.SCHOOL_ID
+@@ -953,11 +965,12 @@ switch ( User( 'PROFILE' ) )
+ 
+ 		// FJ Portal Polls.
+ 		// FJ Portal Polls add students teacher.
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$polls_RET = DBGet( "SELECT s.TITLE AS SCHOOL,date(pp.CREATED_AT) AS CREATED_AT,pp.TITLE,'options' AS OPTIONS,pp.ID
+ 		FROM portal_polls pp,schools s
+ 		WHERE pp.SYEAR='" . UserSyear() . "'
+-		AND (pp.START_DATE<=CURRENT_DATE OR pp.START_DATE IS NULL)
+-		AND (pp.END_DATE>=CURRENT_DATE OR pp.END_DATE IS NULL)
++		AND (pp.START_DATE<='" . DBDate() . "' OR pp.START_DATE IS NULL)
++		AND (pp.END_DATE>='" . DBDate() . "' OR pp.END_DATE IS NULL)
+ 		AND pp.SCHOOL_ID='" . UserSchool() . "'
+ 		AND position(',0,' IN pp.PUBLISHED_PROFILES)>0
+ 		AND s.ID=pp.SCHOOL_ID
+@@ -978,10 +991,11 @@ switch ( User( 'PROFILE' ) )
+ 			);
+ 		}
+ 
++		// SIMDATE sim date instead of CURRENT_DATE.
+ 		$events_RET = DBGet( "SELECT ID,TITLE,SCHOOL_DATE,SCHOOL_DATE AS DAY,DESCRIPTION
+ 		FROM calendar_events
+-		WHERE SCHOOL_DATE BETWEEN CURRENT_DATE
+-		AND (CURRENT_DATE + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
++		WHERE SCHOOL_DATE BETWEEN CAST('" . DBDate() . "' AS DATE)
++		AND (CAST('" . DBDate() . "' AS DATE) + INTERVAL " . ( $DatabaseType === 'mysql' ? '11 DAY' : "'11 DAY'" ) . ")
+ 		AND SYEAR='" . UserSyear() . "'
+ 		AND SCHOOL_ID='" . UserSchool() . "'", [
+ 			'SCHOOL_DATE' => 'ProperDate',
+@@ -1009,6 +1023,7 @@ switch ( User( 'PROFILE' ) )
+ 		{
+ 			require_once 'modules/Grades/includes/StudentAssignments.fnc.php';
+ 
++			// SIMDATE sim date instead of CURRENT_DATE.
+ 			$assignments_RET = DBGet( "SELECT a.ASSIGNMENT_ID,a.TITLE AS ASSIGNMENT_TITLE,
+ 				a.DUE_DATE,a.DUE_DATE AS DAY,a.ASSIGNED_DATE,a.DESCRIPTION,a.STAFF_ID,
+ 				c.TITLE AS COURSE,a.SUBMISSION,a.MARKING_PERIOD_ID,
+@@ -1021,10 +1036,10 @@ switch ( User( 'PROFILE' ) )
+ 			OR c.COURSE_ID=(SELECT cp.COURSE_ID FROM course_periods cp WHERE cp.COURSE_PERIOD_ID=a.COURSE_PERIOD_ID))
+ 			AND (a.COURSE_PERIOD_ID=s.COURSE_PERIOD_ID OR a.COURSE_ID=s.COURSE_ID)
+ 			AND s.STUDENT_ID='" . UserStudentID() . "'
+-			AND (s.END_DATE IS NULL OR s.END_DATE>=CURRENT_DATE)
+-			AND s.START_DATE<=CURRENT_DATE
+-			AND (a.ASSIGNED_DATE<=CURRENT_DATE OR a.ASSIGNED_DATE IS NULL)
+-			AND a.DUE_DATE>=CURRENT_DATE
++			AND (s.END_DATE IS NULL OR s.END_DATE>='" . DBDate() . "')
++			AND s.START_DATE<='" . DBDate() . "'
++			AND (a.ASSIGNED_DATE<='" . DBDate() . "' OR a.ASSIGNED_DATE IS NULL)
++			AND a.DUE_DATE>='" . DBDate() . "'
+ 			AND mp.MARKING_PERIOD_ID=a.MARKING_PERIOD_ID
+ 			AND mp.SYEAR='" . UserSyear() . "'
+ 			ORDER BY a.DUE_DATE,a.TITLE",
+diff --git a/plugins/Content_Security_Policy/SaveReport.php b/plugins/Content_Security_Policy/SaveReport.php
+index 60ae9f0..98048a4 100644
+--- a/plugins/Content_Security_Policy/SaveReport.php
++++ b/plugins/Content_Security_Policy/SaveReport.php
+@@ -159,9 +159,10 @@ $insert_columns = [
+ ];
+ 
+ // Only save unique CSP report once a day.
++// SIMDATE real date: compared with real timestamps, not a school day.
+ $csp_reported_today = DBGetOne( "SELECT 1
+ 	FROM csp_reports
+-	WHERE CREATED_AT>='" . DBDate() . " 00:00:00'
++	WHERE CREATED_AT>='" . date( 'Y-m-d' ) . " 00:00:00'
+ 	AND FULL_REPORT='" . DBEscapeString( json_encode( $csp_report ) ) . "'" );
+ 
+ if ( ! $csp_reported_today )
+diff --git a/plugins/Content_Security_Policy/functions.php b/plugins/Content_Security_Policy/functions.php
+index b58d2c4..aa37dbe 100644
+--- a/plugins/Content_Security_Policy/functions.php
++++ b/plugins/Content_Security_Policy/functions.php
+@@ -24,10 +24,12 @@ function ContentSecurityPolicyCronDo()
+ 		DBQuery( "INSERT INTO config (SCHOOL_ID, TITLE, CONFIG_VALUE)
+ 			VALUES (0, 'CONTENT_SECURITY_POLICY_CRON_DAY', CURRENT_DATE);" );
+ 
+-		$cron_day = DBDate();
++		// SIMDATE real date: compared with real timestamps, not a school day.
++		$cron_day = date( 'Y-m-d' );
+ 	}
+ 
+-	if ( DBDate() <= $cron_day
++	// SIMDATE real date: compared with real timestamps, not a school day.
++	if ( date( 'Y-m-d' ) <= $cron_day
+ 		|| ! UserSchool()
+ 		|| basename( $_SERVER['PHP_SELF'] ) === 'index.php' )
+ 	{
+@@ -36,7 +38,8 @@ function ContentSecurityPolicyCronDo()
+ 	}
+ 
+ 	// Save CRON day.
+-	Config( 'CONTENT_SECURITY_POLICY_CRON_DAY', DBDate() );
++	// SIMDATE real date: compared with real timestamps, not a school day.
++	Config( 'CONTENT_SECURITY_POLICY_CRON_DAY', date( 'Y-m-d' ) );
+ 
+ 	require_once 'plugins/Content_Security_Policy/includes/common.fnc.php';
+ 
