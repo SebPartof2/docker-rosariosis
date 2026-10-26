@@ -1,0 +1,18 @@
+{
+	"name": "mcp-server",
+	"description": "Model Context Protocol (MCP) server: lets AI assistants such as Claude query RosarioSIS data with the permissions of a RosarioSIS user",
+	"type": "rosariosis-plugin",
+	"keywords": ["rosariosis", "mcp", "model context protocol", "ai", "claude", "api", "integration"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=7.4",
+		"ext-json": "*",
+		"ext-pdo": "*"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": ">=12.4"
+		}
+	}
+}
