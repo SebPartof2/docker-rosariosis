@@ -4,7 +4,7 @@
 # Lint Dockerfile: https://hadolint.github.io/hadolint/
 
 # https://hub.docker.com/_/php/tags?name=apache
-FROM php:8.1-apache-bookworm
+FROM php:8.3-apache-bookworm
 
 LABEL maintainer="François Jacquet <francoisjacquet@users.noreply.github.com>"
 
@@ -142,6 +142,12 @@ RUN dest=/usr/src/rosariosis/modules/Students_Import; \
     | tar xz --strip-components=1 -C "$dest"; \
     echo "--- Students_Import contents ---"; ls -la "$dest"; \
     test -n "$(ls -A "$dest")" || { echo "ERROR: Students_Import extracted empty" >&2; exit 1; }
+
+# Our own add-ons, developed in this repo under modules/ and plugins/.
+# COPY merges into the existing dirs, so core modules are left untouched.
+COPY modules/ /usr/src/rosariosis/modules/
+COPY plugins/ /usr/src/rosariosis/plugins/
+RUN rm -f /usr/src/rosariosis/modules/.gitkeep /usr/src/rosariosis/plugins/.gitkeep
 # ---------------------------------------------------------------------------
 
 # Copy our configuration files.

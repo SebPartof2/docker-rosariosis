@@ -16,7 +16,11 @@ services:
   web:
     # Build from the local Dockerfile so the gd and zip extension
     # installs actually run. Requires Compose Type = "Docker Compose".
-    build: .
+    build:
+      context: .
+      # Always pull the newest php:*-apache base so redeploys pick up
+      # PHP/Apache/Debian security patches instead of a cached copy.
+      pull: true
     #image: rosariosis/rosariosis:master
     ports:
       # host:container
