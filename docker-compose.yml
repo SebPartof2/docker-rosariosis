@@ -1,6 +1,3 @@
-# https://docs.docker.com/compose/reference/
-# sudo docker compose --file docker-compose.yml up -d
-
 services:
 
   db:
@@ -21,18 +18,11 @@ services:
       # Always pull the newest php:*-apache base so redeploys pick up
       # PHP/Apache/Debian security patches instead of a cached copy.
       pull: true
-    #image: rosariosis/rosariosis:master
-    ports:
-      # host:container
-      - "8001:80"
-    # Warning: if you use a different port (ie. 8080) for host & access from http://localhost:8080
-    # wkhtmltopdf will fail with network error: ConnectionRefusedError
-    # To fix that, you can use this hack
-    # https://stackoverflow.com/questions/24319662/from-inside-of-a-docker-container-how-do-i-connect-to-the-localhost-of-the-mach#answer-38753971
-    #extra_hosts:
-      # Add `127.0.0.1 rosariosisdocker.local` to your /etc/hosts file
-      # Then, access from http://rosariosisdocker.local:8080
-      # - "rosariosisdocker.local:$DOCKERHOST"
+    # No host port binding: Traefik reaches the container over
+    # dokploy-network. Set the domain in Dokploy's Domains tab
+    # (Service: web, Container Port: 80).
+    expose:
+      - "80"
     depends_on:
       - db
     volumes:
@@ -43,6 +33,8 @@ services:
       PGPASSWORD: rosariopwd
       PGDATABASE: rosariosis
       ROSARIOSIS_YEAR: 2026
+      # In-world location: PHP & PostgreSQL session time zone.
+      ROSARIOSIS_TIMEZONE: America/Anchorage
       # Set the value in Dokploy's Environment tab, not here.
       # Generate with: openssl rand -hex 32
       ROSARIO_REST_API_SECRET: ${ROSARIO_REST_API_SECRET}
