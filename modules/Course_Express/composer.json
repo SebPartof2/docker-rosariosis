@@ -1,0 +1,17 @@
+{
+	"name": "course-express",
+	"description": "Create Course Subjects and Courses in bulk from a CSV list",
+	"type": "rosariosis-module",
+	"keywords": ["rosariosis", "school", "courses", "subjects", "import", "csv"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=5.5.9",
+		"ext-mbstring": "*"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": ">=12.4"
+		}
+	}
+}
