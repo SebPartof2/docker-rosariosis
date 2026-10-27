@@ -141,11 +141,13 @@ RUN for p in /tmp/patches/*.patch; do \
 # every container start. They therefore survive redeploys and cannot be lost
 # by an accidental delete in the volume.
 #
-# Neither add-on publishes tags, so these pin a branch. Replace with commit
+# None of these add-ons publish tags, so these pin a branch. Replace with commit
 # SHAs once you have ones you trust:
-#   docker build --build-arg REST_API_REF=<sha> --build-arg STUDENTS_IMPORT_REF=<sha> .
+#   docker build --build-arg REST_API_REF=<sha> --build-arg STUDENTS_IMPORT_REF=<sha> \
+#                --build-arg STAFF_PARENTS_IMPORT_REF=<sha> .
 ARG REST_API_REF=master
 ARG STUDENTS_IMPORT_REF=master
+ARG STAFF_PARENTS_IMPORT_REF=master
 
 # REST_API is a *plugin* -> plugins/
 RUN dest=/usr/src/rosariosis/plugins/REST_API; \
@@ -162,6 +164,14 @@ RUN dest=/usr/src/rosariosis/modules/Students_Import; \
     | tar xz --strip-components=1 -C "$dest"; \
     echo "--- Students_Import contents ---"; ls -la "$dest"; \
     test -n "$(ls -A "$dest")" || { echo "ERROR: Students_Import extracted empty" >&2; exit 1; }
+
+# Staff_Parents_Import (users & parents) is a *module* -> modules/
+RUN dest=/usr/src/rosariosis/modules/Staff_Parents_Import; \
+    mkdir -p "$dest"; \
+    curl -fsSL "https://gitlab.com/francoisjacquet/Staff_Parents_Import/-/archive/${STAFF_PARENTS_IMPORT_REF}/Staff_Parents_Import-${STAFF_PARENTS_IMPORT_REF}.tar.gz" \
+    | tar xz --strip-components=1 -C "$dest"; \
+    echo "--- Staff_Parents_Import contents ---"; ls -la "$dest"; \
+    test -n "$(ls -A "$dest")" || { echo "ERROR: Staff_Parents_Import extracted empty" >&2; exit 1; }
 
 # Our own add-ons, developed in this repo under modules/ and plugins/.
 # COPY merges into the existing dirs, so core modules are left untouched.
