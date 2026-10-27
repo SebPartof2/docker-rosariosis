@@ -5,9 +5,12 @@
  * CSV parsing, resolution of the requested courses, and the replacement of a
  * student's Course Requests.
  *
- * Importing a student REPLACES their requests: the requests they have are
- * deleted, then the ones listed in the file are added. Re-importing a corrected
- * file therefore leaves exactly what the file says.
+ * Two modes:
+ * - `replace` (default): importing a student REPLACES their requests: the
+ *   requests they have are deleted, then the ones listed in the file are added.
+ *   Re-importing a corrected file therefore leaves exactly what the file says.
+ * - `add`: non destructive. The requests the student has are kept, and only the
+ *   courses of the file they do not request yet are added. Nothing is deleted.
  *
  * @package RosarioSIS
  * @subpackage modules
@@ -27,6 +30,31 @@ if ( ! defined( 'REQUEST_EXPRESS_MAX_ROWS' ) )
 if ( ! defined( 'REQUEST_EXPRESS_MAX_REQUESTS' ) )
 {
 	define( 'REQUEST_EXPRESS_MAX_REQUESTS', 40 );
+}
+
+/**
+ * Import modes
+ *
+ * @return array Associative `[ mode => label ]`, the default mode first.
+ */
+function RequestExpressModes()
+{
+	return [
+		'replace' => _( 'Replace: remove the requests of the student, then add the ones in the file' ),
+		'add' => _( 'Add only: keep the requests of the student, and add the ones in the file they do not have yet' ),
+	];
+}
+
+/**
+ * Sanitize an import mode
+ *
+ * @param  string $mode Import mode.
+ *
+ * @return string `replace` or `add`. Defaults to `replace`.
+ */
+function RequestExpressModeSanitize( $mode )
+{
+	return $mode === 'add' ? 'add' : 'replace';
 }
 
 /**
@@ -527,18 +555,28 @@ function RequestExpressRequestsExisting( $student_ids )
  * Analyze the parsed rows
  *
  * Sets, for each row: `STUDENT_ID`, `STUDENT_NAME`, `COURSES` (the requests to
- * set, `[ course id => [ 'SHORT_NAME', 'TITLE', 'SUBJECT_ID' ] ]`), `REMOVED`
- * and `ADDED` (labels), `STATUS` (error|duplicate|not_found|no_change|update)
- * and `STATUS_TEXT`.
+ * set, `[ course id => [ 'SHORT_NAME', 'TITLE', 'SUBJECT_ID' ] ]`; in `add`
+ * mode, only the ones the student does not have yet), `REMOVED`, `ADDED` and
+ * `KEPT` (labels), `STATUS` (error|duplicate|not_found|no_change|update) and
+ * `STATUS_TEXT`.
  *
- * @param  array $rows         Parsed rows.
- * @param  bool  $clear_blanks An empty requests cell clears the student's requests,
- *                             instead of leaving the row alone.
+ * @param  array  $rows         Parsed rows.
+ * @param  bool   $clear_blanks An empty requests cell clears the student's requests,
+ *                              instead of leaving the row alone. Ignored in `add` mode.
+ * @param  string $mode         Import mode: `replace` or `add` (optional).
  *
  * @return array Analyzed rows.
  */
-function RequestExpressRowsAnalyze( $rows, $clear_blanks )
+function RequestExpressRowsAnalyze( $rows, $clear_blanks, $mode = 'replace' )
 {
+	$mode = RequestExpressModeSanitize( $mode );
+
+	if ( $mode === 'add' )
+	{
+		// Nothing is ever removed in add mode: an empty cell has nothing to add.
+		$clear_blanks = false;
+	}
+
 	$courses = RequestExpressCoursesByShortName();
 
 	$student_ids = [];
@@ -703,7 +741,8 @@ function RequestExpressRowsAnalyze( $rows, $clear_blanks )
 
 		foreach ( $current as $course_id => $label )
 		{
-			if ( isset( $requested[ $course_id ] ) )
+			if ( isset( $requested[ $course_id ] )
+				|| $mode === 'add' )
 			{
 				$rows[ $i ]['KEPT'][] = $label;
 			}
@@ -711,6 +750,12 @@ function RequestExpressRowsAnalyze( $rows, $clear_blanks )
 			{
 				$rows[ $i ]['REMOVED'][] = $label;
 			}
+		}
+
+		if ( $mode === 'add' )
+		{
+			// Only insert the courses the student does not request yet.
+			$rows[ $i ]['COURSES'] = array_diff_key( $requested, $current );
 		}
 
 		foreach ( $requested as $course_id => $course )
@@ -728,7 +773,9 @@ function RequestExpressRowsAnalyze( $rows, $clear_blanks )
 		{
 			$rows[ $i ]['STATUS'] = 'no_change';
 
-			$rows[ $i ]['STATUS_TEXT'] = _( 'The student already has exactly these requests.' );
+			$rows[ $i ]['STATUS_TEXT'] = $mode === 'add' ?
+				_( 'The student already has all these requests.' ) :
+				_( 'The student already has exactly these requests.' );
 
 			continue;
 		}
@@ -742,18 +789,21 @@ function RequestExpressRowsAnalyze( $rows, $clear_blanks )
 }
 
 /**
- * Replace the Course Requests of one student
+ * Replace, or add to, the Course Requests of one student
  *
- * Every request the student has in the current school year & school is deleted,
- * then the requested courses are added.
+ * In `replace` mode, every request the student has in the current school year
+ * & school is deleted, then the requested courses are added.
+ * In `add` mode, nothing is deleted: `COURSES` only holds the courses the
+ * student does not request yet (see RequestExpressRowsAnalyze()), they are added.
  *
  * @uses Request_Express/Import.php|update_requests action hook
  *
- * @param  array $row Analyzed row, of `update` status.
+ * @param  array  $row  Analyzed row, of `update` status.
+ * @param  string $mode Import mode: `replace` or `add` (optional).
  *
- * @return bool True if the requests were replaced.
+ * @return bool True if the requests were updated.
  */
-function RequestExpressRowApply( $row )
+function RequestExpressRowApply( $row, $mode = 'replace' )
 {
 	$student_id = (int) issetVal( $row['STUDENT_ID'], 0 );
 
@@ -762,11 +812,16 @@ function RequestExpressRowApply( $row )
 		return false;
 	}
 
-	// Re-importing replaces the requests: clear them all first.
-	DBQuery( "DELETE FROM schedule_requests
-		WHERE STUDENT_ID='" . $student_id . "'
-		AND SYEAR='" . UserSyear() . "'
-		AND SCHOOL_ID='" . UserSchool() . "'" );
+	$mode = RequestExpressModeSanitize( $mode );
+
+	if ( $mode === 'replace' )
+	{
+		// Re-importing replaces the requests: clear them all first.
+		DBQuery( "DELETE FROM schedule_requests
+			WHERE STUDENT_ID='" . $student_id . "'
+			AND SYEAR='" . UserSyear() . "'
+			AND SCHOOL_ID='" . UserSchool() . "'" );
+	}
 
 	foreach ( (array) issetVal( $row['COURSES'], [] ) as $course_id => $course )
 	{
@@ -800,7 +855,7 @@ function RequestExpressRowApply( $row )
  */
 function RequestExpressSession( $data = null )
 {
-	$empty = [ 'ROWS' => [], 'FILE_NAME' => '', 'CLEAR_BLANKS' => false ];
+	$empty = [ 'ROWS' => [], 'FILE_NAME' => '', 'CLEAR_BLANKS' => false, 'MODE' => 'replace' ];
 
 	if ( $data === false )
 	{

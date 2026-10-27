@@ -10,10 +10,16 @@ Set the students' Course Requests in bulk, from a CSV.
 Each line holds a Student ID and the course numbers the student requests,
 separated by a space. Review the changes student by student, then apply them.
 
-**Importing a student replaces their requests.** Every request they have is
-removed, then the courses listed in the file are added. Re-importing a corrected
-file therefore leaves exactly what the file says — importing the same file twice
-changes nothing the second time.
+Two modes are available:
+
+- **Replace** (default) — **importing a student replaces their requests.** Every
+  request they have is removed, then the courses listed in the file are added.
+  Re-importing a corrected file therefore leaves exactly what the file says —
+  importing the same file twice changes nothing the second time.
+- **Add only** — non destructive. **No request is ever removed.** The requests
+  the student already has are kept, and only the courses of the file they do
+  not request yet are added. Importing the same file twice changes nothing the
+  second time.
 
 Only the students enrolled in the **current school year** and the **current
 school** are updated, and only the courses of that year and school can be
@@ -38,14 +44,16 @@ program requires the "Can Edit" permission because it modifies records.
 ## The 3 steps
 
 1. **Requests File** — upload a `.csv`, `.tsv` or `.txt` file, or paste the
-   rows. One option sits below: whether an empty requests cell removes every
-   request of the student (off by default — an empty cell leaves the student
-   alone).
+   rows. Choose the mode, **Replace** or **Add only**. One more option sits
+   below: whether an empty requests cell removes every request of the student
+   (Replace mode only, off by default — an empty cell leaves the student alone).
 2. **Changes** — every row, with the student it matched and, for that student,
-   the requests **Removed**, **Added** and **Kept**. Rows that cannot be applied
-   say why. Tick **Skip** on any student you do not want to update.
-3. **Done** — the requests are replaced, and everything that was skipped is
-   listed with its reason.
+   the requests **Removed**, **Added** and **Kept**. In Add only mode nothing is
+   ever listed as Removed: the requests not in the file are Kept. Rows that
+   cannot be applied say why. Tick **Skip** on any student you do not want to
+   update.
+3. **Done** — the requests are replaced (or added to), and everything that was
+   skipped is listed with its reason.
 
 ## File format
 
@@ -91,7 +99,8 @@ stay in one column.
   second is reported as a duplicate. A line that fails still claims its student,
   so nothing is silently applied behind a failed line.
 - A student whose requests already match the file exactly is left untouched, so
-  no request loses its creation date for nothing.
+  no request loses its creation date for nothing. In Add only mode, a student
+  who already requests every course of the file is left untouched.
 - A maximum of 2000 rows is read per file, and 40 courses per student.
 
 ## Action hook
@@ -100,7 +109,7 @@ The module fires one action hook, see the [`functions/Actions.php`](https://gitl
 file of RosarioSIS:
 
 - `Request_Express/Import.php|update_requests`, once per updated student, with
-  `$_REQUEST['student_id']` set.
+  `$_REQUEST['student_id']` set. It fires in both modes.
 
 ## Long files
 

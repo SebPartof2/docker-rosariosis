@@ -5,7 +5,7 @@
  * 3 steps wizard:
  * 1. Upload (or paste) the CSV list of requests.
  * 2. Review, student by student, which requests are removed and which are added.
- * 3. Replace the requests.
+ * 3. Replace the requests, or only add the missing ones (non destructive mode).
  *
  * @package RosarioSIS
  * @subpackage modules
@@ -77,6 +77,7 @@ if ( $modfunc === 'preview' )
 				'ROWS' => $rows,
 				'FILE_NAME' => $file_name,
 				'CLEAR_BLANKS' => ! empty( $_REQUEST['clear_blanks'] ),
+				'MODE' => RequestExpressModeSanitize( issetVal( $_REQUEST['mode'], '' ) ),
 			] );
 		}
 	}
@@ -89,6 +90,8 @@ if ( $modfunc === 'preview' )
 }
 
 $session = RequestExpressSession();
+
+$is_add_mode = $session['MODE'] === 'add';
 
 if ( $modfunc !== ''
 	&& ! $session['ROWS'] )
@@ -103,7 +106,7 @@ if ( $modfunc !== ''
  */
 if ( $modfunc === 'save' )
 {
-	$rows = RequestExpressRowsAnalyze( $session['ROWS'], $session['CLEAR_BLANKS'] );
+	$rows = RequestExpressRowsAnalyze( $session['ROWS'], $session['CLEAR_BLANKS'], $session['MODE'] );
 
 	// The rows to leave out are posted, not the rows to apply. A long file
 	// cannot post a ticked box per row: PHP stops reading at max_input_vars,
@@ -146,7 +149,7 @@ if ( $modfunc === 'save' )
 			continue;
 		}
 
-		if ( RequestExpressRowApply( $row ) )
+		if ( RequestExpressRowApply( $row, $session['MODE'] ) )
 		{
 			$students_updated++;
 
@@ -156,7 +159,9 @@ if ( $modfunc === 'save' )
 		{
 			$row['STATUS'] = 'skipped';
 
-			$row['STATUS_TEXT'] = _( 'The requests could not be replaced.' );
+			$row['STATUS_TEXT'] = $is_add_mode ?
+				_( 'The requests could not be added.' ) :
+				_( 'The requests could not be replaced.' );
 
 			$skipped[] = $row;
 		}
@@ -170,7 +175,9 @@ if ( $modfunc === 'save' )
 	echo ErrorMessage( $error );
 
 	$note[] = button( 'check' ) . '&nbsp;' . sprintf(
-		_( 'The requests of %d students were replaced, %d requests in total.' ),
+		( $is_add_mode ?
+			_( 'Requests were added to %d students, %d requests in total.' ) :
+			_( 'The requests of %d students were replaced, %d requests in total.' ) ),
 		$students_updated,
 		$requests_added
 	);
@@ -206,7 +213,7 @@ if ( $modfunc === 'preview' )
 
 	echo ErrorMessage( $note, 'note' );
 
-	$rows = RequestExpressRowsAnalyze( $session['ROWS'], $session['CLEAR_BLANKS'] );
+	$rows = RequestExpressRowsAnalyze( $session['ROWS'], $session['CLEAR_BLANKS'], $session['MODE'] );
 
 	$updatable = 0;
 
@@ -221,12 +228,23 @@ if ( $modfunc === 'preview' )
 	echo '<form action="' . URLEscape( 'Modules.php?modname=' . $_REQUEST['modname'] .
 		'&modfunc=save' ) . '" method="POST">';
 
-	echo ErrorMessage(
-		[ _( 'Importing a student replaces their requests: the ones they have are removed, then the ones in the file are added.' ) ],
-		'warning'
-	);
+	if ( $is_add_mode )
+	{
+		echo ErrorMessage(
+			[ _( 'Add only: the requests the students have are kept, only the ones in the file they do not have yet are added. No request is removed.' ) ],
+			'note'
+		);
+	}
+	else
+	{
+		echo ErrorMessage(
+			[ _( 'Importing a student replaces their requests: the ones they have are removed, then the ones in the file are added.' ) ],
+			'warning'
+		);
+	}
 
-	if ( $session['CLEAR_BLANKS'] )
+	if ( $session['CLEAR_BLANKS']
+		&& ! $is_add_mode )
 	{
 		echo ErrorMessage(
 			[ _( 'An empty requests cell will remove every request of the student.' ) ],
@@ -234,7 +252,7 @@ if ( $modfunc === 'preview' )
 		);
 	}
 
-	PopTable( 'header', _( 'Requests to Replace' ) );
+	PopTable( 'header', $is_add_mode ? _( 'Requests to Add' ) : _( 'Requests to Replace' ) );
 
 	echo '<p class="center">' . sprintf(
 		_( '%d students out of %d will be updated. Tick "Skip" on any you do not want.' ),
@@ -246,7 +264,7 @@ if ( $modfunc === 'preview' )
 
 	echo '<div class="center"><br />' .
 		( $updatable ?
-			Buttons( _( 'Replace Requests' ) ) :
+			Buttons( $is_add_mode ? _( 'Add Requests' ) : _( 'Replace Requests' ) ) :
 			ErrorMessage( [ _( 'There is no student to update.' ) ], 'note' ) ) .
 		'</div>';
 
@@ -319,7 +337,7 @@ echo '<table class="widefat"><thead><tr>
 echo '<p>' . _( 'The first line can be a header row naming the columns; the names are not case sensitive. Without a header row, the columns are read in the order above.' ) . '</p>';
 
 echo ErrorMessage(
-	[ _( 'Importing a student replaces their requests: every request they have is removed, then the courses listed in the file are added. Re-importing a corrected file therefore leaves exactly what the file says.' ) ],
+	[ _( 'In Replace mode, importing a student replaces their requests: every request they have is removed, then the courses listed in the file are added. Re-importing a corrected file therefore leaves exactly what the file says. Choose Add only to never remove a request.' ) ],
 	'warning'
 );
 
@@ -335,10 +353,24 @@ echo '<br /><br />' . FormatInputTitle( _( 'Or paste the requests here' ), 'csv_
 	'<br /><textarea id="csv_text" name="csv_text" rows="6" class="width-100p" ' .
 	'placeholder="' . AttrEscape( '1000123,MAT101 SCI201 ENG101' ) . '"></textarea>';
 
+$modes_html = [];
+
+foreach ( RequestExpressModes() as $mode => $mode_label )
+{
+	$modes_html[] = '<label><input type="radio" name="mode" value="' . AttrEscape( $mode ) . '"' .
+		( $session['MODE'] === $mode ? ' checked' : '' ) . ' /> ' .
+		$mode_label . '</label>';
+}
+
+echo '<br /><fieldset><legend>' . _( 'Mode' ) . '</legend>' .
+	implode( '<br />', $modes_html ) .
+	'</fieldset>';
+
 echo '<br /><div class="center">' .
 	'<label><input type="checkbox" name="clear_blanks" value="Y"' .
 		( $session['CLEAR_BLANKS'] ? ' checked' : '' ) . ' /> ' .
-		_( 'An empty requests cell removes every request of the student' ) . '</label>' .
+		_( 'An empty requests cell removes every request of the student' ) .
+		' (' . _( 'Replace mode only' ) . ')</label>' .
 	'</div>';
 
 echo '<div class="center"><br />' . Buttons( _( 'Next' ) ) . '</div>';
