@@ -1,0 +1,17 @@
+{
+	"name": "request-express",
+	"description": "Set the students Course Requests in bulk from a CSV",
+	"type": "rosariosis-module",
+	"keywords": ["rosariosis", "school", "scheduling", "requests", "import", "csv"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=5.5.9",
+		"ext-mbstring": "*"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": ">=12.0"
+		}
+	}
+}
