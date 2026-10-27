@@ -1,0 +1,17 @@
+{
+	"name": "info-express",
+	"description": "Update Student Info in bulk from a CSV, mapping each column to any student field",
+	"type": "rosariosis-module",
+	"keywords": ["rosariosis", "school", "students", "import", "update", "csv"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=5.5.9",
+		"ext-mbstring": "*"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": ">=12.0"
+		}
+	}
+}
