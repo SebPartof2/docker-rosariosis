@@ -33,6 +33,20 @@ index 73518da..0c3c2ea 100644
  
  		$interval = date_diff( $datetime1, $datetime2 );
  
+diff --git a/Side.php b/Side.php
+--- a/Side.php
++++ b/Side.php
+@@ -398,7 +398,9 @@
+ 		<span class="username br-after"><?php echo User( 'NAME' ); ?></span>
+ 		<?php
+ 			// Localized today's date.
+-			echo '<span class="today-date size-1">' . strftime_compat( '%A ' . Preferences( 'DATE' ) ) . '</span>';
++			// SIMDATE The sim date when one is set. data-date lets SimDate.js refresh it when it changes.
++			echo '<span class="today-date size-1" data-date="' . AttrEscape( DBDate() ) . '">' .
++				strftime_compat( '%A ' . Preferences( 'DATE' ), DBDate() ) . '</span>';
+ 		?>
+ 		<br>
+ 		<?php // School SELECT (Admins & Teachers only).
 diff --git a/functions/Date.php b/functions/Date.php
 index 84931fd..2a16270 100644
 --- a/functions/Date.php

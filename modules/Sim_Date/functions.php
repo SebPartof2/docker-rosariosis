@@ -78,19 +78,20 @@ function SimDateHeaderHead()
 {
 	?>
 	<meta name="sim-date" content="<?php echo AttrEscape( SimDateValue() ); ?>">
-	<script src="modules/Sim_Date/js/SimDate.js?v=1.0"></script>
+	<script src="modules/Sim_Date/js/SimDate.js?v=1.1"></script>
 	<?php
 }
 
 /**
  * Sim date for the browser, refreshed on every (AJAX) page.
  * The meta tag in the head is only output on full page loads.
+ * data-today: the school "today" (sim or real date), for the left menu date.
  *
  * @uses Warehouse.php|footer action hook
  */
 function SimDateFooter()
 {
 	?>
-	<input type="hidden" disabled id="sim_date" data-value="<?php echo AttrEscape( SimDateValue() ); ?>" />
+	<input type="hidden" disabled id="sim_date" data-value="<?php echo AttrEscape( SimDateValue() ); ?>" data-today="<?php echo AttrEscape( DBDate() ); ?>" />
 	<?php
 }

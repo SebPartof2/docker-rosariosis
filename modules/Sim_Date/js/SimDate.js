@@ -135,10 +135,40 @@
 		Cal.simDatePatched = true;
 	};
 
+	/**
+	 * Left menu date (Side.php, patched) is only redrawn when the menu is.
+	 * After an AJAX page, if "today" moved (sim date changed), redraw the menu top.
+	 */
+	var refreshMenuDate = function() {
+		var input = document.getElementById('sim_date'),
+			menuDate = document.querySelector('#menu-top .today-date[data-date]'),
+			today = input ? input.getAttribute('data-today') : '';
+
+		if (!today || !menuDate || typeof window.ajaxLink !== 'function') {
+			return;
+		}
+
+		// Once per date: no loop if the menu update fails.
+		if (menuDate.getAttribute('data-date') !== today && refreshedFor !== today) {
+			refreshedFor = today;
+
+			window.ajaxLink('Side.php?sidefunc=update');
+		}
+	};
+
+	var refreshedFor = '';
+
 	readSimDate();
 
 	// plugins.min.js (jscalendar) is loaded before this script.
 	patchCalendar();
 
-	document.addEventListener('DOMContentLoaded', patchCalendar);
+	document.addEventListener('DOMContentLoaded', function() {
+		patchCalendar();
+
+		// warehouse.js loads pages with jQuery $.ajax().
+		if (window.jQuery) {
+			window.jQuery(document).ajaxComplete(refreshMenuDate);
+		}
+	});
 })();

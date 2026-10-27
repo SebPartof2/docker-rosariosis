@@ -129,6 +129,13 @@ picker's default date, its **Today** button and its today highlight. Other
 scripts keep the real browser clock. It is a separate file because RosarioSIS'
 Content Security Policy blocks inline scripts.
 
+The date in the left menu, under the user name, is the school "today"
+(`DBDate()`, patched in `Side.php`), so it shows the sim date when one is set.
+The menu is not redrawn on every page, so after each AJAX page SimDate.js
+compares the menu date (`data-date`) with the footer's `data-today` and, when
+they differ (the sim date was changed), redraws the menu top
+(`Side.php?sidefunc=update`).
+
 The month calendars (School Setup > Calendars, Attendance > Add Absences, Food
 Service > Daily Menus) are drawn by PHP and use `DBDate()`.
 
@@ -200,6 +207,8 @@ build either applies it exactly or fails. It never half-applies.
 With a sim date set, the quickest checks are:
 
 - the control page shows the expected marking period and school day
+- the date in the left menu, under the user name, is the sim date, and
+  changes after +1 Day without a page reload
 - Attendance > Take Attendance opens on the sim date
 - School Setup > Calendars opens on the sim date's month, and the date
   picker's Today button picks the sim date

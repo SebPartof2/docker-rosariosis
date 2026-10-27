@@ -63,6 +63,7 @@ All other `DBDate()` callers (≈200) are school dates (A) and need nothing more
 | database.inc.php:666 | `echo date( 'm/d/Y H:i:s' );` | B | — | DB error report timestamp. |
 | functions/ErrorMessage.fnc.php:179 | `'Date: ' . date( 'Y-m-d H:i:s' )` | B | — | Error email timestamp. |
 | functions/PHPCompatibility/strftime_compat.php:35-58 | `$timestamp = time();` / `new \DateTime` when none given | B | — | Only reached with no timestamp; callers are the Preferences date-format examples (modules/Users/Preferences.php:439-448), which just preview the format. |
+| Side.php:401 | `strftime_compat( '%A ' . Preferences( 'DATE' ) )` (no timestamp) | A | patched | Left menu "today" under the user name. Now `strftime_compat( …, DBDate() )`, so it shows the sim date. SimDate.js redraws the menu top when "today" changes. |
 | Warehouse.php:197-200 | `new DateTime( '', $date_time_zone )`, `gmdate( 'H:i', … )` | B | — | Computes the time zone offset for MySQL. |
 | ProgramFunctions/FileUpload.fnc.php:758 | `date( 'Y-m-d_His' )` | B | — | Unique upload file name. |
 | ProgramFunctions/HackingLog.fnc.php:30,36 | `time()` | B | — | Rate limiting. |
