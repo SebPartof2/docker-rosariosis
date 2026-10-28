@@ -50,6 +50,10 @@ SSO maps the Clerk user to RosarioSIS **by external ID only**, never by username
 
 They are passed to the web container by `docker-compose.yml`. Secrets are never stored in the database.
 
+If the configuration page shows them missing, it also lists every variable name containing "clerk" that PHP can see, and whether `ROSARIO_REST_API_SECRET` reaches PHP. **"set, but empty"** means the compose file passed the variable, but Docker Compose had no value to substitute: the Dokploy Environment tab is missing it, or the name is spelled differently there.
+
+Fallback: define them as constants at the end of `config.inc.php` (on the volume), for example `define( 'CLERK_SECRET_KEY', 'sk_live_...' );`. Environment variables win when both are set.
+
 ### 3. RosarioSIS
 
 1. _School > Configuration > Plugins_: activate **Clerk**, then click **Configuration**.

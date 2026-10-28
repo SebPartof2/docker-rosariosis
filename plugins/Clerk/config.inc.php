@@ -218,9 +218,46 @@ $yes_no = function( $set )
 
 echo '<table class="width-100p">';
 
+$env_sources = [
+	'env' => dgettext( 'Clerk', 'environment variable' ),
+	'constant' => dgettext( 'Clerk', 'config.inc.php constant' ),
+	'empty' => dgettext( 'Clerk', 'set, but empty' ),
+];
+
+$env_missing = false;
+
 foreach ( [ 'CLERK_SECRET_KEY', 'CLERK_FRONTEND_API', 'CLERK_OAUTH_CLIENT_ID', 'CLERK_OAUTH_CLIENT_SECRET' ] as $env )
 {
-	echo '<tr><td>' . NoInput( $yes_no( ClerkEnv( $env ) !== '' ), '<code>' . $env . '</code>' ) . '</td></tr>';
+	$source = ClerkEnvSource( $env );
+
+	$env_missing = $env_missing || ! in_array( $source, [ 'env', 'constant' ] );
+
+	echo '<tr><td>' . NoInput(
+		$yes_no( in_array( $source, [ 'env', 'constant' ] ) ) . ( $source ? ' (' . $env_sources[ $source ] . ')' : '' ),
+		'<code>' . $env . '</code>'
+	) . '</td></tr>';
+}
+
+if ( $env_missing )
+{
+	// Diagnostic: variable names only, never values.
+	$env_names = array_keys( (array) getenv() );
+
+	$clerk_like = preg_grep( '/clerk/i', $env_names );
+
+	echo '<tr><td>' . NoInput(
+		( $clerk_like ?
+			'<code>' . htmlspecialchars( implode( ', ', array_map( 'json_encode', $clerk_like ) ), ENT_QUOTES ) . '</code>' :
+			dgettext( 'Clerk', 'None' ) ),
+		dgettext( 'Clerk', 'Variables containing "clerk" seen by PHP (check spelling, case, spaces)' )
+	) . '</td></tr>';
+
+	echo '<tr><td>' . NoInput(
+		$yes_no( getenv( 'ROSARIO_REST_API_SECRET' ) !== false ) . ' &nbsp; ' .
+		dgettext( 'Clerk', 'Compose variables reach PHP:' ) . ' ' .
+		count( $env_names ) . ' ' . dgettext( 'Clerk', 'variables seen' ),
+		'<code>ROSARIO_REST_API_SECRET</code>'
+	) . '</td></tr>';
 }
 
 echo '<tr><td>' . NoInput(

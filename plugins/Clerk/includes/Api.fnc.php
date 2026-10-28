@@ -29,7 +29,8 @@ if ( ! defined( 'CLERK_EXTERNAL_ID_PREFIX' ) )
 }
 
 /**
- * Environment variable
+ * Environment variable, or constant of the same name
+ * Constants can be defined in config.inc.php when the environment is not available.
  *
  * @param string $name Variable name.
  *
@@ -39,7 +40,52 @@ function ClerkEnv( $name )
 {
 	$value = getenv( $name );
 
-	return $value === false ? '' : trim( $value );
+	if ( $value === false
+		&& isset( $_SERVER[ $name ] ) )
+	{
+		$value = $_SERVER[ $name ];
+	}
+
+	if ( ( $value === false || trim( $value ) === '' )
+		&& defined( $name ) )
+	{
+		$value = constant( $name );
+	}
+
+	return $value === false ? '' : trim( (string) $value );
+}
+
+/**
+ * Where a setting comes from, for the configuration page
+ * Never returns the value.
+ *
+ * @param string $name Variable name.
+ *
+ * @return string env, constant, empty (set but empty) or '' (not set).
+ */
+function ClerkEnvSource( $name )
+{
+	$value = getenv( $name );
+
+	if ( $value === false
+		&& isset( $_SERVER[ $name ] ) )
+	{
+		$value = $_SERVER[ $name ];
+	}
+
+	if ( $value !== false
+		&& trim( $value ) !== '' )
+	{
+		return 'env';
+	}
+
+	if ( defined( $name )
+		&& trim( (string) constant( $name ) ) !== '' )
+	{
+		return 'constant';
+	}
+
+	return $value !== false ? 'empty' : '';
 }
 
 /**
