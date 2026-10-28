@@ -51,6 +51,9 @@ fi
 CLERK_BEGIN='// BEGIN Clerk plugin keys (bin/init, rewritten on every start)'
 CLERK_END='// END Clerk plugin keys'
 sed -i -e "\#^${CLERK_BEGIN}\$#,\#^${CLERK_END}\$#d" /var/www/html/config.inc.php
+# Also any CLERK_ constant defined by hand: PHP keeps the first define of a
+# constant, so an old one above the block would silently win.
+sed -i -e "/^[[:space:]]*define([[:space:]]*['\"]CLERK_/d" /var/www/html/config.inc.php
 clerk_defines=""
 for name in CLERK_SECRET_KEY CLERK_FRONTEND_API CLERK_OAUTH_CLIENT_ID CLERK_OAUTH_CLIENT_SECRET CLERK_OAUTH_REDIRECT_URI; do
     value="${!name}"
