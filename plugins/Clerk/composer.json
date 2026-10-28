@@ -1,0 +1,17 @@
+{
+	"name": "clerk",
+	"description": "Sync RosarioSIS users to Clerk (RosarioSIS is the source of truth) and Sign in with Clerk (SSO)",
+	"type": "rosariosis-plugin",
+	"keywords": ["rosariosis", "school", "clerk", "sso", "oauth", "users"],
+	"license": "GPL-2.0-or-later",
+	"version": "1.0",
+	"require": {
+		"php": ">=7.4",
+		"ext-curl": "*"
+	},
+	"extra": {
+		"require": {
+			"francoisjacquet/rosariosis": "12.9.3"
+		}
+	}
+}
