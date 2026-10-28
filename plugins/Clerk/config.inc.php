@@ -253,7 +253,7 @@ if ( $env_missing )
 	) . '</td></tr>';
 
 	echo '<tr><td>' . NoInput(
-		$yes_no( getenv( 'ROSARIO_REST_API_SECRET' ) !== false ) . ' &nbsp; ' .
+		$yes_no( trim( (string) getenv( 'ROSARIO_REST_API_SECRET' ) ) !== '' ) . ' &nbsp; ' .
 		dgettext( 'Clerk', 'Compose variables reach PHP:' ) . ' ' .
 		count( $env_names ) . ' ' . dgettext( 'Clerk', 'variables seen' ),
 		'<code>ROSARIO_REST_API_SECRET</code>'

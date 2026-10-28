@@ -48,9 +48,9 @@ SSO maps the Clerk user to RosarioSIS **by external ID only**, never by username
 | `CLERK_OAUTH_CLIENT_SECRET` | OAuth application Client Secret. Required for SSO. |
 | `CLERK_OAUTH_REDIRECT_URI` | Optional, overrides the redirect URI if the detected one is wrong (proxy). |
 
-They are passed to the web container by `docker-compose.yml`. Secrets are never stored in the database.
+Dokploy writes them to a `.env` file next to `docker-compose.yml`, which loads it into the web container with `env_file`. Do not also list them under `environment:` in the compose file: a `${VAR}` substitution that comes out empty there overrides the `env_file` value. Secrets are never stored in the database.
 
-If the configuration page shows them missing, it also lists every variable name containing "clerk" that PHP can see, and whether `ROSARIO_REST_API_SECRET` reaches PHP. **"set, but empty"** means the compose file passed the variable, but Docker Compose had no value to substitute: the Dokploy Environment tab is missing it, or the name is spelled differently there.
+If the configuration page shows them missing, it also lists every variable name containing "clerk" that PHP can see, and whether `ROSARIO_REST_API_SECRET` has a value in PHP. **"set, but empty"** means the container has the variable with an empty value: something is overriding it, usually an `environment:` entry in the compose file.
 
 Fallback: define them as constants at the end of `config.inc.php` (on the volume), for example `define( 'CLERK_SECRET_KEY', 'sk_live_...' );`. Environment variables win when both are set.
 

@@ -27,6 +27,14 @@ services:
       - db
     volumes:
       - "../files/plan/rosariosis:/var/www/html"
+    # Dokploy's Environment tab, written to .env next to this file, loaded
+    # straight into the container: ROSARIO_REST_API_SECRET, CLERK_SECRET_KEY,
+    # CLERK_FRONTEND_API, CLERK_OAUTH_CLIENT_ID, CLERK_OAUTH_CLIENT_SECRET
+    # (see plugins/Clerk/README.md). Do not also list them under environment:
+    # below: an empty ${VAR} substitution there would override the value.
+    env_file:
+      - path: .env
+        required: false
     environment:
       PGHOST: db
       PGUSER: rosario
@@ -35,15 +43,6 @@ services:
       ROSARIOSIS_YEAR: 2026
       # In-world location: PHP & PostgreSQL session time zone.
       ROSARIOSIS_TIMEZONE: America/Anchorage
-      # Set the value in Dokploy's Environment tab, not here.
-      # Generate with: openssl rand -hex 32
-      ROSARIO_REST_API_SECRET: ${ROSARIO_REST_API_SECRET}
-      # Clerk plugin (plugins/Clerk/README.md). Set the values in Dokploy's
-      # Environment tab. Secret key: Clerk Dashboard > API keys.
-      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
-      # Frontend API URL, e.g. https://clerk.example.com (Dashboard > Domains).
-      CLERK_FRONTEND_API: ${CLERK_FRONTEND_API}
-      # Sign in with Clerk: Dashboard > OAuth applications.
-      CLERK_OAUTH_CLIENT_ID: ${CLERK_OAUTH_CLIENT_ID}
-      CLERK_OAUTH_CLIENT_SECRET: ${CLERK_OAUTH_CLIENT_SECRET}
+      # ROSARIO_REST_API_SECRET & CLERK_*: from env_file above.
+      # REST secret: generate with openssl rand -hex 32.
 #      ROSARIOSIS_LANG: 'es_ES'
