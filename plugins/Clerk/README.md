@@ -52,7 +52,7 @@ Dokploy writes them to a `.env` file next to `docker-compose.yml`, which loads i
 
 If the configuration page shows them missing, it also lists every variable name containing "clerk" that PHP can see, and whether `ROSARIO_REST_API_SECRET` has a value in PHP. **"set, but empty"** means the container has the variable with an empty value: something is overriding it, usually an `environment:` entry in the compose file.
 
-Fallback: define them as constants at the end of `config.inc.php` (on the volume), for example `define( 'CLERK_SECRET_KEY', 'sk_live_...' );`. Environment variables win when both are set.
+On every container start, `bin/init` writes them to `config.inc.php` as constants (block between `// BEGIN Clerk plugin keys` and `// END Clerk plugin keys`), which the plugin reads. The block is rewritten each start, so changed or removed keys apply after a redeploy. Values with characters other than letters, digits and `_ . : / ? = & % + -` are refused (logged as a warning) so they cannot inject PHP code. `config.inc.php` is made readable by Apache only (`chmod 600`).
 
 ### 3. RosarioSIS
 

@@ -42,7 +42,44 @@ else
         >> /var/www/html/config.inc.php
 fi
 
+# Clerk plugin keys, as constants the plugin reads (plugins/Clerk/README.md).
+# Same reason as above: config.inc.php is preserved across restarts. Unlike the
+# REST_API secret, the block is rewritten on every start, so a changed or
+# removed value is applied.
+# Security: the values end up in PHP code. Only characters keys, IDs and URLs
+# use are accepted, so a value can never close the string and inject code.
+CLERK_BEGIN='// BEGIN Clerk plugin keys (bin/init, rewritten on every start)'
+CLERK_END='// END Clerk plugin keys'
+sed -i -e "\#^${CLERK_BEGIN}\$#,\#^${CLERK_END}\$#d" /var/www/html/config.inc.php
+clerk_defines=""
+for name in CLERK_SECRET_KEY CLERK_FRONTEND_API CLERK_OAUTH_CLIENT_ID CLERK_OAUTH_CLIENT_SECRET CLERK_OAUTH_REDIRECT_URI; do
+    value="${!name}"
+    if [[ -z "$value" ]]; then
+        continue
+    fi
+    if [[ ! "$value" =~ ^[A-Za-z0-9_.:/?=\&%+-]+$ ]]; then
+        echo "WARNING: $name contains characters that are not allowed, skipping it" >&2
+        continue
+    fi
+    clerk_defines+="define( '$name', '$value' );"$'\n'
+done
+if [[ -n "$clerk_defines" ]]; then
+    echo "Writing Clerk plugin keys to config.inc.php"
+    sed -i -e 's/^[[:space:]]*?>[[:space:]]*$//' /var/www/html/config.inc.php
+    # Make sure the block starts on its own line.
+    if [[ -n "$(tail -c 1 /var/www/html/config.inc.php)" ]]; then
+        echo >> /var/www/html/config.inc.php
+    fi
+    printf "%s\n%s%s\n" "$CLERK_BEGIN" "$clerk_defines" "$CLERK_END" >> /var/www/html/config.inc.php
+else
+    echo "CLERK_* not set, skipping Clerk plugin keys"
+fi
+
 chown -R www-data:www-data /var/www/html
+
+# config.inc.php holds the database password and API secrets:
+# readable by Apache (www-data) only, not by other users of the container.
+chmod 600 /var/www/html/config.inc.php
 
 echo "Configuring locale"
 if [ "$ROSARIOSIS_LANG" == "en_US" ]; then
