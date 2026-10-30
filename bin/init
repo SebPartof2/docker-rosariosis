@@ -51,9 +51,6 @@ fi
 CLERK_BEGIN='// BEGIN Clerk plugin keys (bin/init, rewritten on every start)'
 CLERK_END='// END Clerk plugin keys'
 sed -i -e "\#^${CLERK_BEGIN}\$#,\#^${CLERK_END}\$#d" /var/www/html/config.inc.php
-# Also any CLERK_ constant defined by hand: PHP keeps the first define of a
-# constant, so an old one above the block would silently win.
-sed -i -e "/^[[:space:]]*define([[:space:]]*['\"]CLERK_/d" /var/www/html/config.inc.php
 clerk_defines=""
 for name in CLERK_SECRET_KEY CLERK_FRONTEND_API CLERK_OAUTH_CLIENT_ID CLERK_OAUTH_CLIENT_SECRET CLERK_OAUTH_REDIRECT_URI; do
     value="${!name}"
@@ -68,6 +65,9 @@ for name in CLERK_SECRET_KEY CLERK_FRONTEND_API CLERK_OAUTH_CLIENT_ID CLERK_OAUT
 done
 if [[ -n "$clerk_defines" ]]; then
     echo "Writing Clerk plugin keys to config.inc.php"
+    # Replace any CLERK_ constant defined by hand: PHP keeps the first define
+    # of a constant, so an old one would silently win over the block.
+    sed -i -e "/^[[:space:]]*define([[:space:]]*['\"]CLERK_/d" /var/www/html/config.inc.php
     sed -i -e 's/^[[:space:]]*?>[[:space:]]*$//' /var/www/html/config.inc.php
     # Make sure the block starts on its own line.
     if [[ -n "$(tail -c 1 /var/www/html/config.inc.php)" ]]; then
@@ -75,7 +75,13 @@ if [[ -n "$clerk_defines" ]]; then
     fi
     printf "%s\n%s%s\n" "$CLERK_BEGIN" "$clerk_defines" "$CLERK_END" >> /var/www/html/config.inc.php
 else
-    echo "CLERK_* not set, skipping Clerk plugin keys"
+    echo "CLERK_* not set in the container environment: keeping any Clerk keys defined by hand in config.inc.php"
+    # Keys swallowed by another variable (lines merged in Dokploy's Environment tab).
+    for env_name in $(compgen -e); do
+        if [[ "${!env_name}" == *CLERK_* ]]; then
+            echo "WARNING: the value of $env_name contains CLERK_ keys: in the Environment tab, put each variable on its own line, without quotes" >&2
+        fi
+    done
 fi
 
 chown -R www-data:www-data /var/www/html

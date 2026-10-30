@@ -245,6 +245,25 @@ if ( $env_missing )
 
 	$clerk_like = preg_grep( '/clerk/i', $env_names );
 
+	// Clerk keys swallowed by another variable: lines merged in Dokploy's Environment tab.
+	$swallowed_by = [];
+
+	foreach ( (array) getenv() as $env_name => $env_value )
+	{
+		if ( strpos( (string) $env_value, 'CLERK_' ) !== false )
+		{
+			$swallowed_by[] = $env_name;
+		}
+	}
+
+	if ( $swallowed_by )
+	{
+		echo '<tr><td><span class="legend-red">' . sprintf(
+			dgettext( 'Clerk', 'The Clerk keys are inside the value of %s: in the Dokploy Environment tab, that line and the CLERK_ lines are merged into one (same line, missing line break, or a quote that is never closed). Put each variable on its own line, without quotes, then Deploy.' ),
+			'<code>' . htmlspecialchars( implode( ', ', $swallowed_by ), ENT_QUOTES ) . '</code>'
+		) . '</span></td></tr>';
+	}
+
 	echo '<tr><td>' . NoInput(
 		( $clerk_like ?
 			'<code>' . htmlspecialchars( implode( ', ', array_map( 'json_encode', $clerk_like ) ), ENT_QUOTES ) . '</code>' :
