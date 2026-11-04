@@ -74,8 +74,12 @@ RUN apt-get update; \
     if ldd "$(php -r 'echo ini_get("extension_dir");')"/*.so | grep 'not found'; then \
         echo "ERROR: unresolved shared library above" >&2; exit 1; \
     fi; \
+    # Capture `php -m` once: piping it straight into `grep -q` races under
+    # pipefail (grep exits on the first match, php gets SIGPIPE, exit 141).
+    php_modules="$(php -m 2>&1)"; \
     for ext in gd zip pgsql pdo_pgsql gettext intl ldap; do \
-        php -m | grep -qx "$ext" || { echo "ERROR: $ext failed to load" >&2; exit 1; }; \
+        grep -qx "$ext" <<< "$php_modules" \
+            || { echo "$php_modules" >&2; echo "ERROR: $ext failed to load" >&2; exit 1; }; \
     done
 
 # Set recommended PHP.ini settings
