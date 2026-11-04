@@ -42,7 +42,8 @@ INSERT INTO profile_exceptions (PROFILE_ID, MODNAME, CAN_USE, CAN_EDIT)
 				UNION SELECT 'Course_Express/Sections.php'
 				UNION SELECT 'Course_Express/MoveSections.php'
 				UNION SELECT 'Course_Express/Defaults.php'
-				UNION SELECT 'Course_Express/Overrides.php') p
+				UNION SELECT 'Course_Express/Overrides.php'
+				UNION SELECT 'Course_Express/Reapply.php') p
 		WHERE up.PROFILE='admin'
 		AND NOT EXISTS (SELECT 1
 			FROM profile_exceptions pe
@@ -59,7 +60,8 @@ INSERT INTO staff_exceptions (USER_ID, MODNAME, CAN_USE, CAN_EDIT)
 				UNION SELECT 'Course_Express/Sections.php'
 				UNION SELECT 'Course_Express/MoveSections.php'
 				UNION SELECT 'Course_Express/Defaults.php'
-				UNION SELECT 'Course_Express/Overrides.php') p
+				UNION SELECT 'Course_Express/Overrides.php'
+				UNION SELECT 'Course_Express/Reapply.php') p
 		WHERE se.MODNAME='Scheduling/Courses.php'
 		AND se.CAN_EDIT='Y'
 		AND NOT EXISTS (SELECT 1

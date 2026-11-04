@@ -52,7 +52,10 @@ if ( $_REQUEST['modfunc'] === 'save' )
 	{
 		CourseExpressDefaultsSet( $values );
 
-		$note[] = button( 'check' ) . '&nbsp;' . _( 'Your changes were saved.' );
+		$note[] = button( 'check' ) . '&nbsp;' . _( 'Your changes were saved.' ) .
+			' ' . _( 'They apply to the sections imported from now on.' ) . ' ' .
+			'<a href="' . URLEscape( 'Modules.php?modname=Course_Express/Reapply.php' ) . '">' .
+			_( 'Reapply them to the existing sections' ) . '</a>';
 	}
 
 	// Unset modfunc & values & redirect URL.

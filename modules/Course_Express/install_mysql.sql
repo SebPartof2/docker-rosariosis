@@ -42,7 +42,8 @@ INSERT IGNORE INTO profile_exceptions (PROFILE_ID, MODNAME, CAN_USE, CAN_EDIT)
 				UNION SELECT 'Course_Express/Sections.php'
 				UNION SELECT 'Course_Express/MoveSections.php'
 				UNION SELECT 'Course_Express/Defaults.php'
-				UNION SELECT 'Course_Express/Overrides.php') p
+				UNION SELECT 'Course_Express/Overrides.php'
+				UNION SELECT 'Course_Express/Reapply.php') p
 		WHERE up.PROFILE='admin';
 
 -- Administrators with custom permissions (staff_exceptions):
@@ -59,7 +60,8 @@ INSERT IGNORE INTO staff_exceptions (USER_ID, MODNAME, CAN_USE, CAN_EDIT)
 				UNION SELECT 'Course_Express/Sections.php'
 				UNION SELECT 'Course_Express/MoveSections.php'
 				UNION SELECT 'Course_Express/Defaults.php'
-				UNION SELECT 'Course_Express/Overrides.php') p;
+				UNION SELECT 'Course_Express/Overrides.php'
+				UNION SELECT 'Course_Express/Reapply.php') p;
 
 -- The three reports only read: CAN_USE without CAN_EDIT.
 

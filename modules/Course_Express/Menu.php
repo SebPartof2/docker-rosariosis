@@ -23,6 +23,7 @@ $menu['Course_Express']['admin'] = [
 	2 => _( 'Setup' ),
 	'Course_Express/Defaults.php' => _( 'Section Defaults' ),
 	'Course_Express/Overrides.php' => _( 'Section Overrides' ),
+	'Course_Express/Reapply.php' => _( 'Reapply Settings' ),
 ] + issetVal( $menu['Course_Express']['admin'], [] );
 
 // Creating courses & sections requires the "Can Edit" permission.
@@ -34,4 +35,5 @@ $exceptions['Course_Express'] = [
 	'Course_Express/MoveSections.php' => true,
 	'Course_Express/Defaults.php' => true,
 	'Course_Express/Overrides.php' => true,
+	'Course_Express/Reapply.php' => true,
 ];

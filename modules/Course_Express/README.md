@@ -15,6 +15,8 @@ Create Course Subjects, Courses and sections (Course Periods) in bulk, from CSV 
   _Section Defaults_ and adjust per group of courses in _Section Overrides_.
 - **Move Sections** reads a list of students and moves each from one section of a
   course to another.
+- **Reapply Settings** gives the sections which already exist the current
+  _Section Defaults_ and _Section Overrides_, after either was changed.
 
 Everything is created in the **current school year** and the **current school**.
 
@@ -30,6 +32,7 @@ Course Express
 - Empty Sections
 - Section Defaults
 - Section Overrides
+- Reapply Settings
 
 ## Install
 
@@ -41,6 +44,10 @@ creates the 2 override set tables and gives the programs to the Administrator
 profiles. Individual permissions can then be adjusted from _Users > Profiles_ or
 _Users > Permissions_. The programs require the "Can Edit" permission because they
 create records.
+
+When updating a school where the module was already active, _Reapply Settings_ is
+not in the menu yet: tick it (with "Can Edit") in _Users > Profiles_ for the
+Administrator profile.
 
 ## Courses file format
 
@@ -288,9 +295,46 @@ override sets again).
 
 Marking periods offered are Full Year and its children, like _Scheduling > Courses_.
 
+### 4. Reapply Settings (after a change)
+
+The defaults and override sets are read when a section is **created**: changing
+them later leaves the sections already imported as they were. _Reapply Settings_
+gives the existing sections the settings they would get if they were imported
+today, resolved exactly as above.
+
+1. Tick the settings to reapply (all are ticked at first). An unticked setting is
+   left as it is on every section, so untick _Seats_ to keep seats set by hand.
+   Narrow the courses down to one subject, or to the courses of one override set.
+   Each override set's page carries a _Reapply to the existing sections_ button
+   that opens this screen with the set already chosen.
+2. Review. Only the sections which would change are listed, each with its
+   changes as `old → new`. Sections which already match are counted, not
+   listed. Tick _Skip_ on any to leave out.
+3. Update.
+
+Every section of the courses chosen is compared, **including the ones created
+by hand** in _Scheduling > Courses_: Course Express does not record which
+sections it created. Use _Skip_, or narrow the courses, to protect them.
+
+- Short name, teacher, period, marking period, credits, room and gender
+  restriction are never touched, so schedules, grades and attendance already
+  recorded are unaffected.
+- A section which meets in **several school periods** keeps its meeting days:
+  the defaults hold the days of one period only. The other settings are still
+  reapplied.
+- When the meeting days change, the section name is rebuilt, as it holds them.
+- Seats lower than the students already in a section are flagged on the row,
+  not refused.
+- A section is not updated when a setting being reapplied names a calendar,
+  grading scale or attendance category that is not in this school year, or has
+  no meeting days (save the Section Defaults and override sets again).
+
+The changes are worked out again when you click _Update Sections_, so what is
+saved is what the settings say at that moment.
+
 ## Action hooks
 
-The module fires 3 action hooks, see the [`functions/Actions.php`](https://gitlab.com/francoisjacquet/rosariosis/-/blob/mobile/functions/Actions.php)
+The module fires 4 action hooks, see the [`functions/Actions.php`](https://gitlab.com/francoisjacquet/rosariosis/-/blob/mobile/functions/Actions.php)
 file of RosarioSIS:
 
 - `Course_Express/Import.php|create_course_subject`, with `$_REQUEST['subject_id']`
@@ -299,6 +343,8 @@ file of RosarioSIS:
   `$_REQUEST['course_id']` set to the new Course.
 - `Course_Express/Sections.php|create_course_period`, with `$_REQUEST['course_id']`
   and `$_REQUEST['course_period_id']` set to the new Course Period.
+- `Course_Express/Reapply.php|update_course_period`, with `$_REQUEST['course_id']`
+  and `$_REQUEST['course_period_id']` set to the updated Course Period.
 
 The `Scheduling/Courses.php|*` hooks are deliberately **not** fired: add-ons listening
 to those expect the Courses program context.

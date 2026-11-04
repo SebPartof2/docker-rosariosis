@@ -182,23 +182,37 @@ function CourseExpressDefaultsGet()
  * IDs then belong to the previous year. Sections without meeting days never
  * meet, and Scheduling > Courses would drop their period on the next save.
  *
+ * @since 1.2 Add $only param.
+ *
  * @param  array $values Settings `[ setting => value ]`.
+ * @param  array $only   Only check these settings (optional). Defaults to all.
  *
  * @return array Translated problems, empty if none.
  */
-function CourseExpressSettingsProblems( $values )
+function CourseExpressSettingsProblems( $values, $only = [] )
 {
 	$settings = CourseExpressSettings();
 
 	$problems = [];
 
-	if ( (string) issetVal( $values['DAYS'], '' ) === '' )
+	$check = function( $setting ) use ( $only )
+	{
+		return ! $only || in_array( $setting, $only, true );
+	};
+
+	if ( $check( 'DAYS' )
+		&& (string) issetVal( $values['DAYS'], '' ) === '' )
 	{
 		$problems[] = _( 'Meeting Days' ) . ': ' . _( 'Please fill in the required fields' );
 	}
 
 	foreach ( [ 'CALENDAR_ID', 'GRADE_SCALE_ID' ] as $setting )
 	{
+		if ( ! $check( $setting ) )
+		{
+			continue;
+		}
+
 		$value = (string) issetVal( $values[ $setting ], '' );
 
 		if ( ( $value !== '' || $settings[ $setting ]['NA'] === false )
@@ -211,7 +225,9 @@ function CourseExpressSettingsProblems( $values )
 		}
 	}
 
-	$categories = array_filter( explode( ',', (string) issetVal( $values['DOES_ATTENDANCE'], '' ) ), 'strlen' );
+	$categories = ! $check( 'DOES_ATTENDANCE' ) ?
+		[] :
+		array_filter( explode( ',', (string) issetVal( $values['DOES_ATTENDANCE'], '' ) ), 'strlen' );
 
 	foreach ( $categories as $category_id )
 	{
@@ -1200,18 +1216,21 @@ function CourseExpressSectionTitleDays( $days )
  * renamed -- or to repair a title built wrong.
  *
  * @since 1.1
+ * @since 1.2 Add $course_period_id param.
  *
- * @param  string $course_id Only the sections of this course (optional).
+ * @param  string $course_id        Only the sections of this course (optional).
+ * @param  string $course_period_id Only this section (optional).
  *
  * @return array `[ 'CHECKED' => int, 'CHANGED' => int ]`.
  */
-function CourseExpressSectionTitlesRecompute( $course_id = 0 )
+function CourseExpressSectionTitlesRecompute( $course_id = 0, $course_period_id = 0 )
 {
 	$sections_RET = DBGet( "SELECT COURSE_PERIOD_ID,TITLE
 		FROM course_periods
 		WHERE SYEAR='" . UserSyear() . "'
 		AND SCHOOL_ID='" . UserSchool() . "'" .
-		( $course_id ? " AND COURSE_ID='" . (int) $course_id . "'" : '' ) );
+		( $course_id ? " AND COURSE_ID='" . (int) $course_id . "'" : '' ) .
+		( $course_period_id ? " AND COURSE_PERIOD_ID='" . (int) $course_period_id . "'" : '' ) );
 
 	$checked = $changed = 0;
 

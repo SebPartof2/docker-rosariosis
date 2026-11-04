@@ -271,6 +271,12 @@ if ( $_REQUEST['set_id'] )
 				URLEscape( 'Modules.php?modname=' . $_REQUEST['modname'] )
 			) .
 			( $is_new ? '' : '&nbsp;&nbsp;' . button(
+				'settings',
+				_( 'Reapply to the existing sections' ),
+				URLEscape( 'Modules.php?modname=Course_Express/Reapply.php' .
+					'&set_id=' . $_REQUEST['set_id'] )
+			) ) .
+			( $is_new ? '' : '&nbsp;&nbsp;' . button(
 				'remove',
 				_( 'Delete' ),
 				URLEscape( 'Modules.php?modname=' . $_REQUEST['modname'] .
